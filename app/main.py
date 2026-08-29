@@ -8,8 +8,8 @@ from agents import Runner
 from app.agent.context import JarvisContext
 from app.agent.jarvis import jarvis
 from app.database import Base, engine
-from app.memory.service import recent_memories
-from app.schemas import ChatRequest, ChatResponse, MemoryOut
+from app.memory.service import recent_memories, save_memory
+from app.schemas import ChatRequest, ChatResponse, MemoryCreate, MemoryOut
 
 
 Base.metadata.create_all(bind=engine)
@@ -48,3 +48,22 @@ def memories(user_id: str):
         )
         for m in items
     ]
+
+
+@app.post("/memories", response_model=MemoryOut, status_code=201)
+def create_memory(body: MemoryCreate):
+    """Save a structured memory directly, without using OpenAI tokens."""
+    memory = save_memory(
+        user_id=body.user_id,
+        content=body.content,
+        memory_type=body.type,
+        category=body.category,
+        importance=body.importance,
+    )
+    return MemoryOut(
+        id=memory.id,
+        type=memory.type,
+        category=memory.category,
+        content=memory.content,
+        importance=memory.importance,
+    )

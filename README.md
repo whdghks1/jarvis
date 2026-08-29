@@ -30,7 +30,7 @@ docker compose up -d
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+
 ```
 
 ### Windows PowerShell
@@ -48,6 +48,22 @@ uvicorn app.main:app --reload
 - 상태 확인: http://127.0.0.1:8000/health
 
 ## 3. 첫 테스트
+
+토큰 없이 명시적인 기억을 저장하려면 `POST /memories`를 사용합니다.
+이 API는 OpenAI Agent를 거치지 않고 PostgreSQL에 바로 저장합니다.
+
+```json
+{
+  "user_id": "owner",
+  "content": "사용자의 이름은 종환이다.",
+  "type": "fact",
+  "category": "profile",
+  "importance": 0.9
+}
+```
+
+아래 `POST /chat`은 자연어를 해석하고 기억 여부를 판단하므로 OpenAI
+토큰을 사용합니다.
 
 `POST /chat`
 
@@ -85,4 +101,3 @@ uvicorn app.main:app --reload
 - [ ] Web Search
 - [ ] 승인(HITL)
 - [ ] Voice
-
