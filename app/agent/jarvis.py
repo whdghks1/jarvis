@@ -1,5 +1,6 @@
 from agents import Agent
 
+from app.config import get_settings
 from app.agent.context import JarvisContext
 from app.agent.tools import save_memory, search_memory
 
@@ -28,8 +29,11 @@ Available capabilities:
 """
 
 
+settings = get_settings()
+
 jarvis = Agent[JarvisContext](
     name="JARVIS",
     instructions=JARVIS_INSTRUCTIONS,
+    model=settings.openai_model,
     tools=[search_memory, save_memory],
 )

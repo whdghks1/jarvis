@@ -12,6 +12,7 @@ def save_memory(
     memory_type: str = "fact",
     category: str = "general",
     importance: float = 0.5,
+    normalized_key: str | None = None,
 ) -> str:
     """Save durable information about the user for future conversations.
 
@@ -23,6 +24,7 @@ def save_memory(
         memory_type: fact, preference, goal, project, person, or decision.
         category: Short category such as career, project, food, schedule.
         importance: Importance from 0.0 to 1.0.
+        normalized_key: Stable key such as profile.name when this memory replaces an older value.
     """
     memory = db_save_memory(
         user_id=ctx.context.user_id,
@@ -30,6 +32,7 @@ def save_memory(
         memory_type=memory_type,
         category=category,
         importance=importance,
+        normalized_key=normalized_key,
     )
     return f"Saved memory #{memory.id}: {memory.content}"
 

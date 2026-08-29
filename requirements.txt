@@ -1,7 +1,10 @@
-fastapi
-uvicorn[standard]
-openai-agents
-sqlalchemy
-psycopg[binary]
-python-dotenv
-pydantic
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+openai-agents==0.22.0
+sqlalchemy==2.0.52
+psycopg[binary]==3.3.4
+python-dotenv>=1.0,<2
+pydantic==2.13.5
+alembic>=1.16,<2
+pytest>=8,<9
+httpx>=0.28,<1
