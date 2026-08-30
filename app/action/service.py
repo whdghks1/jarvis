@@ -25,6 +25,14 @@ def _validate_payload(action_type: str, payload: dict) -> None:
         for key in ("start_millis", "end_millis"):
             if key in payload and not isinstance(payload[key], int):
                 raise ValueError(f"calendar.create {key} must be an integer")
+        start = payload.get("start_millis")
+        end = payload.get("end_millis")
+        if start is not None and end is not None and end <= start:
+            raise ValueError("calendar.create end_millis must be after start_millis")
+        for key in ("description", "location"):
+            value = payload.get(key)
+            if value is not None and (not isinstance(value, str) or len(value) > 2000):
+                raise ValueError(f"calendar.create {key} must be a string")
 
 
 def create_action(

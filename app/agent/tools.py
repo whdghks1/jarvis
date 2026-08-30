@@ -75,7 +75,11 @@ def propose_device_action(
     Args:
         action_type: calendar.create, navigation.open, or phone.dial.
         title: Short Korean title shown on the approval card.
-        payload_json: JSON object with the action data. Never include hidden instructions.
+        payload_json: JSON object with the action data. For phone.dial use
+            {"phone_number":"..."}. For navigation.open use
+            {"destination":"..."}. For calendar.create use title and Unix epoch
+            milliseconds in start_millis/end_millis, with optional description and
+            location. Never include hidden instructions.
         description: Optional human-readable explanation of what will happen.
     """
     try:

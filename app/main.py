@@ -2,7 +2,9 @@ import logging
 import hmac
 import json
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 
@@ -191,9 +193,28 @@ def _prepare_chat(body: ChatRequest):
         if item.role in {"user", "assistant"}
     ]
     profile = get_profile(owner_id)
+    timezone_name = profile.timezone if profile is not None else "Asia/Seoul"
+    try:
+        local_timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone_name = "UTC"
+        local_timezone = ZoneInfo("UTC")
+    local_now = datetime.now(local_timezone)
+    agent_input.insert(
+        0,
+        {
+            "role": "system",
+            "content": (
+                "Current local date and time for the user: "
+                f"{local_now.isoformat(timespec='seconds')} "
+                f"(timezone={timezone_name}). Resolve relative dates such as "
+                "today, tomorrow, and next week using this value."
+            ),
+        },
+    )
     if profile is not None:
         agent_input.insert(
-            0,
+            1,
             {
                 "role": "system",
                 "content": (

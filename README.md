@@ -20,6 +20,8 @@ FastAPI, OpenAI Agents SDK, PostgreSQL로 만드는 개인 AI 비서입니다.
 - 일회용 등록 코드를 이용한 기기 인증
 - Android Keystore 기반 인증 토큰 보관
 - 전화·지도·캘린더 작업 승인 및 감사 로그
+- 사용자 시간대 기준 상대 날짜 해석
+- 실행 전 전화번호·목적지·일정 상세 내용 확인
 - Alembic DB migration
 - liveness/readiness 상태 확인
 
@@ -253,6 +255,7 @@ Android 앱의 현재 기능:
 - 버튼 기반 한국어 음성 입력
 - 한국어 TTS 응답과 음성 켜기·끄기 설정
 - 실행 대기 작업 승인·취소
+- 승인 카드에서 전화번호·목적지·일정 시간·장소 확인
 - 캘린더·지도·다이얼러 Intent 실행
 - 기기 연결 해제
 

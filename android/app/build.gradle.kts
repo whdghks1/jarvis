@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jarvis.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 5
+        versionName = "0.1.4"
     }
     buildFeatures {
         compose = true

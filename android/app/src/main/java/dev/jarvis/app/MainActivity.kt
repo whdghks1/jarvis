@@ -12,22 +12,41 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 
 data class UiMessage(val role: String, val text: String)
@@ -38,6 +57,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = android.graphics.Color.rgb(2, 6, 11)
+        window.navigationBarColor = android.graphics.Color.rgb(2, 6, 11)
         val tokenStore = SecureTokenStore(this)
         val prefs = getSharedPreferences("jarvis_settings", MODE_PRIVATE)
         textToSpeech = TextToSpeech(this) { status ->
@@ -84,6 +105,12 @@ class MainActivity : ComponentActivity() {
             }
             "calendar.create" -> Intent(Intent.ACTION_INSERT).setData(CalendarContract.Events.CONTENT_URI).apply {
                 putExtra(CalendarContract.Events.TITLE, action.payload.getString("title"))
+                action.payload.optString("description").takeIf { it.isNotBlank() }?.let {
+                    putExtra(CalendarContract.Events.DESCRIPTION, it)
+                }
+                action.payload.optString("location").takeIf { it.isNotBlank() }?.let {
+                    putExtra(CalendarContract.Events.EVENT_LOCATION, it)
+                }
                 action.payload.optLong("start_millis").takeIf { it > 0 }?.let {
                     putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, it)
                 }
@@ -147,28 +174,176 @@ private fun PairingScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    Box(Modifier.fillMaxSize().background(Color(0xFF050B12)).padding(24.dp), contentAlignment = Alignment.Center) {
-        Column(Modifier.widthIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("JARVIS", style = MaterialTheme.typography.headlineLarge, color = Color(0xFF5DD9FF), fontWeight = FontWeight.Bold)
-            Text("개인 기기 연결", color = Color.White)
-            OutlinedTextField(url, { url = it }, label = { Text("서버 주소") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(name, { name = it }, label = { Text("기기 이름") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(code, { code = it }, label = { Text("서버 터미널의 등록 코드") }, modifier = Modifier.fillMaxWidth())
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Button(
-                enabled = !loading && url.isNotBlank() && code.length >= 6,
-                modifier = Modifier.fillMaxWidth(),
-                onClick = {
-                    loading = true
-                    scope.launch {
-                        runCatching { withContext(Dispatchers.IO) { pair(url, name, code) } }
-                            .onFailure { error = it.message }
-                        loading = false
+    Box(Modifier.fillMaxSize().background(Color(0xFF02060B))) {
+        HudBackground()
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                MiniCore()
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("PERSONAL ASSISTANT", color = HudCyan, style = MaterialTheme.typography.labelSmall)
+                    Text("JARVIS", color = HudText, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.weight(1f))
+                Text("●  CORE ONLINE", color = Color(0xFF62F5BC), style = MaterialTheme.typography.labelSmall)
+            }
+
+            Spacer(Modifier.height(38.dp))
+            JarvisCore()
+            Spacer(Modifier.height(18.dp))
+            Text("NEURAL INTERFACE READY", color = HudCyan, style = MaterialTheme.typography.labelSmall)
+            Text(
+                "개인 기기 연결",
+                color = HudText,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Light,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            Text(
+                "보안 채널을 설정하면 이 기기에서 JARVIS를 사용할 수 있습니다.",
+                color = HudMuted,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp, bottom = 18.dp),
+            )
+
+            Surface(
+                modifier = Modifier.fillMaxWidth().widthIn(max = 460.dp)
+                    .border(1.dp, HudLine, RoundedCornerShape(4.dp)),
+                color = Color(0xE6071B29),
+                shape = RoundedCornerShape(4.dp),
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                    HudField(url, { url = it }, "SERVER ENDPOINT", "http://10.0.2.2:8000")
+                    HudField(name, { name = it }, "DEVICE ID", "My Android")
+                    HudField(
+                        code, { code = it }, "PAIRING CODE", "서버의 등록 코드",
+                        secret = true,
+                    )
+                    error?.let {
+                        Text("LINK ERROR // $it", color = Color(0xFFFF8294), style = MaterialTheme.typography.labelSmall)
                     }
-                },
-            ) { Text(if (loading) "연결 중…" else "안전하게 연결") }
+                    Button(
+                        enabled = !loading && url.isNotBlank() && code.length >= 6,
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF123C50),
+                            contentColor = Color(0xFFDFFAFF),
+                            disabledContainerColor = Color(0xFF0A202C),
+                        ),
+                        shape = RoundedCornerShape(3.dp),
+                        onClick = {
+                            loading = true
+                            error = null
+                            scope.launch {
+                                runCatching { withContext(Dispatchers.IO) { pair(url, name, code) } }
+                                    .onFailure { error = it.message }
+                                loading = false
+                            }
+                        },
+                    ) { Text(if (loading) "SECURE LINK INITIALIZING…" else "기기 연결  //  INITIALIZE") }
+                }
+            }
+            Text(
+                "ENCRYPTED PERSONAL CHANNEL  ·  AUTH REQUIRED",
+                color = Color(0xFF476273),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
+            )
         }
     }
+}
+
+private val HudCyan = Color(0xFF53DDFF)
+private val HudText = Color(0xFFEFFBFF)
+private val HudMuted = Color(0xFF7896A8)
+private val HudLine = Color(0x4D53DDFF)
+
+@Composable
+private fun HudBackground() {
+    Canvas(Modifier.fillMaxSize()) {
+        drawRect(Brush.radialGradient(listOf(Color(0x332891B5), Color.Transparent), center = Offset(size.width * .72f, size.height * .24f), radius = size.width * .75f))
+        val grid = 44.dp.toPx()
+        var x = 0f
+        while (x < size.width) { drawLine(Color(0x1053DDFF), Offset(x, 0f), Offset(x, size.height)); x += grid }
+        var y = 0f
+        while (y < size.height) { drawLine(Color(0x1053DDFF), Offset(0f, y), Offset(size.width, y)); y += grid }
+        drawCircle(Color(0x1853DDFF), size.width * .47f, Offset(size.width * 1.04f, size.height * .23f), style = Stroke(1.dp.toPx()))
+    }
+}
+
+@Composable
+private fun MiniCore() {
+    Box(
+        Modifier.size(38.dp).border(1.dp, Color(0x9953DDFF), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(8.dp).background(Color(0xFFDFFAFF), CircleShape))
+    }
+}
+
+@Composable
+private fun JarvisCore() {
+    val transition = rememberInfiniteTransition(label = "jarvis-core")
+    val clockwise by transition.animateFloat(
+        0f, 360f, infiniteRepeatable(tween(9000, easing = LinearEasing), RepeatMode.Restart), label = "clockwise",
+    )
+    val counter by transition.animateFloat(
+        360f, 0f, infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Restart), label = "counter",
+    )
+    Box(Modifier.size(148.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize().rotate(clockwise)) {
+            drawCircle(Color(0x4053DDFF), style = Stroke(1.dp.toPx()))
+            for (angle in 0 until 360 step 24) {
+                val radians = Math.toRadians(angle.toDouble())
+                val center = Offset(size.width / 2, size.height / 2)
+                val r1 = size.minDimension * .43f
+                val r2 = size.minDimension * .49f
+                drawLine(
+                    HudCyan,
+                    Offset(center.x + kotlin.math.cos(radians).toFloat() * r1, center.y + kotlin.math.sin(radians).toFloat() * r1),
+                    Offset(center.x + kotlin.math.cos(radians).toFloat() * r2, center.y + kotlin.math.sin(radians).toFloat() * r2),
+                    1.dp.toPx(),
+                )
+            }
+        }
+        Box(Modifier.size(108.dp).rotate(counter).border(1.dp, Color(0x9953DDFF), CircleShape))
+        Box(
+            Modifier.size(66.dp).background(
+                Brush.radialGradient(listOf(Color(0x6653DDFF), Color(0xFF061925))), CircleShape,
+            ).border(1.dp, Color(0xCCB6F4FF), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { Text("J", color = Color(0xFFDFFAFF), style = MaterialTheme.typography.headlineMedium) }
+    }
+}
+
+@Composable
+private fun HudField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    placeholder: String,
+    secret: Boolean = false,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        placeholder = { Text(placeholder, color = Color(0xFF526F80)) },
+        visualTransformation = if (secret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = HudText, unfocusedTextColor = HudText,
+            focusedBorderColor = HudCyan, unfocusedBorderColor = HudLine,
+            focusedLabelColor = HudCyan, unfocusedLabelColor = HudMuted,
+            cursorColor = HudCyan,
+        ),
+    )
 }
 
 @Composable
@@ -345,12 +520,36 @@ private fun PendingActionCard(
             Text("실행 승인이 필요합니다", color = Color(0xFF5DD9FF), fontWeight = FontWeight.Bold)
             Text(action.title, color = Color.White)
             action.description?.let { Text(it, color = Color(0xFFB7C8D5)) }
+            Text(actionPreview(action), color = Color(0xFFD6E7F2))
             Row(Modifier.align(Alignment.End)) {
                 TextButton(onClick = { onCancel(action) }) { Text("취소") }
                 Button(onClick = { onApprove(action) }) { Text("확인 후 실행") }
             }
         }
     }
+}
+
+private fun actionPreview(action: DeviceAction): String = when (action.type) {
+    "phone.dial" -> "전화번호: ${action.payload.optString("phone_number", "확인 필요")}"
+    "navigation.open" -> "목적지: ${action.payload.optString("destination", "확인 필요")}"
+    "calendar.create" -> {
+        val title = action.payload.optString("title", "제목 없음")
+        val start = formatDateTime(action.payload.optLong("start_millis", 0L))
+        val end = formatDateTime(action.payload.optLong("end_millis", 0L))
+        val location = action.payload.optString("location").takeIf { it.isNotBlank() }
+        buildString {
+            append("일정: $title\n시작: $start")
+            if (end != "지정 안 됨") append("\n종료: $end")
+            if (location != null) append("\n장소: $location")
+        }
+    }
+    else -> "지원하지 않는 작업"
+}
+
+private fun formatDateTime(epochMillis: Long): String {
+    if (epochMillis <= 0L) return "지정 안 됨"
+    return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+        .format(Date(epochMillis))
 }
 
 @Composable

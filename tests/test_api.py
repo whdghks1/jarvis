@@ -94,10 +94,12 @@ def test_conversation_history_and_user_ownership(monkeypatch):
         assert second.status_code == 200
         assert [item["role"] for item in captured_inputs[1]] == [
             "system",
+            "system",
             "user",
             "assistant",
             "user",
         ]
+        assert "Current local date and time" in captured_inputs[1][0]["content"]
         messages = client.get(
             f"/conversations/{conversation_id}/messages"
         )
@@ -141,6 +143,24 @@ def test_device_pairing_and_safe_action_lifecycle():
         )
         assert completed.status_code == 200
         assert completed.json()["status"] == "completed"
+
+
+def test_calendar_action_rejects_invalid_time_range():
+    with TestClient(app) as client:
+        response = client.post(
+            "/actions",
+            json={
+                "action_type": "calendar.create",
+                "title": "Invalid calendar event",
+                "payload": {
+                    "title": "Meeting",
+                    "start_millis": 2_000,
+                    "end_millis": 1_000,
+                },
+            },
+        )
+        assert response.status_code == 422
+        assert "end_millis must be after" in response.json()["detail"]
 
 
 def test_streaming_chat_persists_final_reply(monkeypatch):
