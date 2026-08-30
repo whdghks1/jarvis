@@ -96,6 +96,7 @@ button { color: inherit; }
 .welcome-install::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(112,230,255,.12), transparent); transform: translateX(-100%); animation: install-scan 4s ease-in-out infinite; }
 .welcome-install small { color: var(--muted); font-size: 10px; }
 .welcome-install:hover { border-color: var(--line-hot); box-shadow: var(--cyan-glow); }
+.install-button.unavailable, .welcome-install.unavailable { opacity: .42; cursor: not-allowed; filter: grayscale(.7); }
 .suggestions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 18px; }
 .suggestions button { min-height: 50px; padding: 10px; color: #a8c6d4; font-size: 11px; letter-spacing: .03em; }
 

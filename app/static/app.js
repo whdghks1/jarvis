@@ -189,6 +189,26 @@ async function initialize() {
   } catch (error) {
     elements.statusText.textContent = "서버 연결 필요";
   }
+  try {
+    const apk = await fetch("/downloads/jarvis/status", { cache: "no-store" }).then((response) => {
+      if (!response.ok) throw new Error("APK status unavailable");
+      return response.json();
+    });
+    document.querySelectorAll("[data-apk-install]").forEach((link) => {
+      if (!apk.available) {
+        link.removeAttribute("href");
+        link.classList.add("unavailable");
+        link.setAttribute("aria-disabled", "true");
+        link.title = "APK를 먼저 빌드해야 합니다";
+      } else {
+        link.title = `JARVIS.apk · ${(apk.size_bytes / 1024 / 1024).toFixed(1)}MB`;
+      }
+    });
+  } catch {
+    document.querySelectorAll("[data-apk-install]").forEach((link) => {
+      link.title = "서버 연결을 확인해 주세요";
+    });
+  }
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/static/sw.js");
 }
 

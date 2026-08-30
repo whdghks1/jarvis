@@ -18,6 +18,9 @@ def test_health_and_readiness(tmp_path, monkeypatch):
         assert apk.status_code == 200
         assert apk.headers["content-type"] == "application/vnd.android.package-archive"
         assert "JARVIS.apk" in apk.headers["content-disposition"]
+        status = client.get("/downloads/jarvis/status").json()
+        assert status["available"] is True
+        assert status["size_bytes"] == len(b"fake apk")
         assert client.get("/health").status_code == 200
         response = client.get("/ready")
         assert response.status_code == 200

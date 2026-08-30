@@ -93,6 +93,7 @@ public_paths = {
     "/ready",
     "/device-registration",
     "/downloads/jarvis.apk",
+    "/downloads/jarvis/status",
     "/docs",
     "/openapi.json",
     "/redoc",
@@ -412,7 +413,17 @@ def download_android_app():
         android_apk,
         media_type="application/vnd.android.package-archive",
         filename="JARVIS.apk",
+        headers={"Cache-Control": "no-store, max-age=0"},
     )
+
+
+@app.get("/downloads/jarvis/status", include_in_schema=False)
+def android_app_status():
+    return {
+        "available": android_apk.is_file(),
+        "filename": "JARVIS.apk",
+        "size_bytes": android_apk.stat().st_size if android_apk.is_file() else 0,
+    }
 
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")

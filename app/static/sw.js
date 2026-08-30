@@ -1,4 +1,4 @@
-const CACHE = "jarvis-ui-v4";
+const CACHE = "jarvis-ui-v5";
 const ASSETS = ["/", "/static/style.css", "/static/app.js", "/static/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -10,6 +10,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET" || new URL(event.request.url).pathname.startsWith("/chat")) return;
+  const path = new URL(event.request.url).pathname;
+  if (event.request.method !== "GET" || path.startsWith("/chat") || path.startsWith("/downloads/")) return;
   event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
 });

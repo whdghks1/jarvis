@@ -113,11 +113,13 @@ private fun JarvisApp(
     var serverUrl by remember { mutableStateOf(initialServerUrl) }
     var token by remember { mutableStateOf(tokenStore.load()) }
     if (token == null) {
-        PairingScreen(serverUrl, onServerUrl = { serverUrl = it }) { name, code ->
-            val api = JarvisApi(serverUrl)
+        PairingScreen(serverUrl) { enteredUrl, name, code ->
+            val normalizedUrl = enteredUrl.trim().trimEnd('/')
+            val api = JarvisApi(normalizedUrl)
             val newToken = api.pair(name, code)
             tokenStore.save(newToken)
-            saveServerUrl(serverUrl)
+            serverUrl = normalizedUrl
+            saveServerUrl(normalizedUrl)
             token = newToken
         }
     } else {
@@ -137,8 +139,7 @@ private fun JarvisApp(
 @Composable
 private fun PairingScreen(
     initialUrl: String,
-    onServerUrl: (String) -> Unit,
-    pair: suspend (String, String) -> Unit,
+    pair: suspend (String, String, String) -> Unit,
 ) {
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf("My Android") }
@@ -160,8 +161,7 @@ private fun PairingScreen(
                 onClick = {
                     loading = true
                     scope.launch {
-                        runCatching { withContext(Dispatchers.IO) { pair(name, code) } }
-                            .onSuccess { onServerUrl(url) }
+                        runCatching { withContext(Dispatchers.IO) { pair(url, name, code) } }
                             .onFailure { error = it.message }
                         loading = false
                     }
