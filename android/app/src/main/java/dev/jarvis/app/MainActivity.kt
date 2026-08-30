@@ -365,6 +365,7 @@ private fun ChatScreen(
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var ttsEnabled by remember { mutableStateOf(initialTtsEnabled) }
+    var menuExpanded by remember { mutableStateOf(false) }
 
     fun refreshActions() = scope.launch {
         runCatching { withContext(Dispatchers.IO) { api.pendingActions() } }
@@ -385,28 +386,65 @@ private fun ChatScreen(
         }
     }
 
-    Scaffold(
-        containerColor = Color(0xFF050B12),
-        topBar = {
-            Surface(color = Color(0xFF0B1724)) {
-                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("JARVIS", color = Color(0xFF5DD9FF), fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = {
-                        ttsEnabled = !ttsEnabled
-                        saveTtsEnabled(ttsEnabled)
-                    }) { Text(if (ttsEnabled) "음성 켜짐" else "음성 꺼짐") }
-                    TextButton(onClick = {
-                        conversationId = null
-                        saveConversationId(null)
-                        messages = emptyList()
-                    }) { Text("새 대화") }
-                    TextButton(onClick = onUnpair) { Text("연결 해제") }
+    Box(Modifier.fillMaxSize().background(Color(0xFF02060B))) {
+        HudBackground()
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                Surface(color = Color(0xE6071520), shadowElevation = 10.dp) {
+                    Row(
+                        Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        MiniCore()
+                        Spacer(Modifier.width(11.dp))
+                        Column {
+                            Text("SECURE PERSONAL CHANNEL", color = HudCyan, style = MaterialTheme.typography.labelSmall)
+                            Text("JARVIS", color = HudText, fontWeight = FontWeight.SemiBold)
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            if (loading) "●  PROCESSING" else "●  ONLINE",
+                            color = if (loading) HudCyan else Color(0xFF62F5BC),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        Box {
+                            TextButton(onClick = { menuExpanded = true }) {
+                                Text("⋮", color = HudText, style = MaterialTheme.typography.headlineSmall)
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false },
+                                modifier = Modifier.background(Color(0xFF081B28)),
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(if (ttsEnabled) "음성 응답 끄기" else "음성 응답 켜기") },
+                                    onClick = {
+                                        ttsEnabled = !ttsEnabled
+                                        saveTtsEnabled(ttsEnabled)
+                                        menuExpanded = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("새 대화") },
+                                    onClick = {
+                                        conversationId = null
+                                        saveConversationId(null)
+                                        messages = emptyList()
+                                        menuExpanded = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("기기 연결 해제") },
+                                    onClick = { menuExpanded = false; onUnpair() },
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-        },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+            },
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
             if (pending.isNotEmpty()) {
                 PendingActionCard(pending.first(), onApprove = { action ->
                     scope.launch {
@@ -427,22 +465,48 @@ private fun ChatScreen(
                     scope.launch { withContext(Dispatchers.IO) { api.cancel(action.id) }; refreshActions() }
                 })
             }
-            LazyColumn(
+                LazyColumn(
                 Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp),
                 contentPadding = PaddingValues(vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (messages.isEmpty()) item { Text("무엇을 도와드릴까요?", color = Color.White, style = MaterialTheme.typography.headlineSmall) }
+                if (messages.isEmpty()) item { ChatWelcome() }
                 items(messages) { message -> MessageBubble(message) }
             }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
-            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Bottom) {
-                OutlinedTextField(
-                    input, { input = it }, placeholder = { Text("JARVIS에게 말하기") },
-                    modifier = Modifier.weight(1f), maxLines = 5,
-                )
-                IconButton(onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }) { Text("🎙") }
-                Button(enabled = !loading && input.isNotBlank(), onClick = {
+                error?.let {
+                    Text(
+                        "SYSTEM ERROR // $it", color = Color(0xFFFF8294),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
+                    )
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)
+                        .border(1.dp, HudLine, RoundedCornerShape(4.dp)),
+                    color = Color(0xF2071B29),
+                    shape = RoundedCornerShape(4.dp),
+                ) {
+                    Row(Modifier.padding(7.dp), verticalAlignment = Alignment.Bottom) {
+                        OutlinedTextField(
+                            input, { input = it }, placeholder = { Text("JARVIS에게 메시지 보내기", color = HudMuted) },
+                            modifier = Modifier.weight(1f), maxLines = 5,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = HudText, unfocusedTextColor = HudText,
+                                focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent,
+                                cursorColor = HudCyan,
+                            ),
+                        )
+                        FilledIconButton(
+                            onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                            colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF0C3042)),
+                        ) { Text("🎙") }
+                        Spacer(Modifier.width(6.dp))
+                        FilledIconButton(
+                            enabled = !loading && input.isNotBlank(),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = Color(0xFF176A88), contentColor = HudText,
+                            ),
+                            onClick = {
                     val text = input.trim(); input = ""; loading = true
                     messages = messages + UiMessage("user", text)
                     scope.launch {
@@ -481,7 +545,15 @@ private fun ChatScreen(
                             }.onFailure { error = it.message }
                         loading = false
                     }
-                }) { Text(if (loading) "…" else "전송") }
+                            },
+                        ) { Text(if (loading) "…" else "↑", style = MaterialTheme.typography.titleLarge) }
+                    }
+                }
+                Text(
+                    "PRIVATE LINK  ·  RESPONSES MAY BE INACCURATE",
+                    color = Color(0xFF476273), style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 7.dp),
+                )
             }
         }
     }
@@ -500,12 +572,70 @@ private fun ChatScreen(
 
 @Composable
 private fun MessageBubble(message: UiMessage) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.role == "user") Arrangement.End else Arrangement.Start) {
+    val user = message.role == "user"
+    Column(
+        Modifier.fillMaxWidth(),
+        horizontalAlignment = if (user) Alignment.End else Alignment.Start,
+    ) {
+        Text(
+            if (user) "YOU" else "JARVIS // AI",
+            color = if (user) Color(0xFF6B9AAF) else HudCyan,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+        )
         Surface(
-            color = if (message.role == "user") Color(0xFF153D55) else Color(0xFF0B1724),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.widthIn(max = 320.dp),
-        ) { Text(message.text, color = Color.White, modifier = Modifier.padding(14.dp)) }
+            color = if (user) Color(0xE60D4258) else Color(0xE6071D2B),
+            shape = if (user) RoundedCornerShape(14.dp, 2.dp, 14.dp, 14.dp)
+            else RoundedCornerShape(2.dp, 14.dp, 14.dp, 14.dp),
+            modifier = Modifier.widthIn(max = 340.dp).border(
+                1.dp, if (user) Color(0x6653DDFF) else HudLine,
+                if (user) RoundedCornerShape(14.dp, 2.dp, 14.dp, 14.dp)
+                else RoundedCornerShape(2.dp, 14.dp, 14.dp, 14.dp),
+            ),
+        ) { Text(message.text.ifEmpty { "분석 중…" }, color = HudText, modifier = Modifier.padding(15.dp)) }
+    }
+}
+
+@Composable
+private fun ChatWelcome() {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 34.dp, bottom = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        JarvisCore()
+        Text(
+            "NEURAL INTERFACE ACTIVE", color = HudCyan,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(top = 18.dp),
+        )
+        Text(
+            "무엇을 도와드릴까요?", color = HudText,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Light,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+        Text(
+            "모든 시스템이 준비되었습니다.\n명령하거나 대화를 시작하세요.",
+            color = HudMuted, textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            HudReadout("MEMORY", "SYNCED")
+            HudReadout("VOICE", "READY")
+            HudReadout("CHANNEL", "SECURE")
+        }
+    }
+}
+
+@Composable
+private fun HudReadout(label: String, value: String) {
+    Column(
+        Modifier.width(94.dp).border(width = 1.dp, color = HudLine).padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(label, color = Color(0xFF526F80), style = MaterialTheme.typography.labelSmall)
+        Text(value, color = Color(0xFF87D9EC), style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -515,9 +645,13 @@ private fun PendingActionCard(
     onApprove: (DeviceAction) -> Unit,
     onCancel: (DeviceAction) -> Unit,
 ) {
-    Card(Modifier.fillMaxWidth().padding(12.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF123047))) {
+    Card(
+        Modifier.fillMaxWidth().padding(12.dp).border(1.dp, Color(0x9953DDFF), RoundedCornerShape(4.dp)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xF20A2636)),
+        shape = RoundedCornerShape(4.dp),
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("실행 승인이 필요합니다", color = Color(0xFF5DD9FF), fontWeight = FontWeight.Bold)
+            Text("ACTION PROTOCOL // APPROVAL REQUIRED", color = HudCyan, style = MaterialTheme.typography.labelSmall)
             Text(action.title, color = Color.White)
             action.description?.let { Text(it, color = Color(0xFFB7C8D5)) }
             Text(actionPreview(action), color = Color(0xFFD6E7F2))
