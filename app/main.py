@@ -1,5 +1,6 @@
 import logging
 import hmac
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from agents import Runner
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
@@ -135,6 +137,25 @@ def device_revoke(device_id: int):
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest):
+    conversation, agent_input = _prepare_chat(body)
+
+    try:
+        result = await Runner.run(
+            jarvis,
+            agent_input,
+            context=JarvisContext(user_id=owner_id),
+        )
+        reply = str(result.final_output)
+        add_message(conversation.id, "assistant", reply)
+        return ChatResponse(reply=reply, conversation_id=conversation.id)
+    except Exception as exc:
+        logger.exception("Agent run failed", extra={"conversation_id": conversation.id})
+        raise HTTPException(
+            status_code=502, detail="The assistant could not complete the request"
+        ) from exc
+
+
+def _prepare_chat(body: ChatRequest):
     conversation = None
     if body.conversation_id is not None:
         conversation = get_conversation(body.conversation_id, owner_id)
@@ -169,21 +190,54 @@ async def chat(body: ChatRequest):
         )
     agent_input.append({"role": "user", "content": body.message})
     add_message(conversation.id, "user", body.message)
+    return conversation, agent_input
 
-    try:
-        result = await Runner.run(
-            jarvis,
-            agent_input,
-            context=JarvisContext(user_id=owner_id),
-        )
-        reply = str(result.final_output)
-        add_message(conversation.id, "assistant", reply)
-        return ChatResponse(reply=reply, conversation_id=conversation.id)
-    except Exception as exc:
-        logger.exception("Agent run failed", extra={"conversation_id": conversation.id})
-        raise HTTPException(
-            status_code=502, detail="The assistant could not complete the request"
-        ) from exc
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.post("/chat/stream")
+async def chat_stream(body: ChatRequest):
+    conversation, agent_input = _prepare_chat(body)
+
+    async def generate():
+        result = None
+        try:
+            yield _sse("conversation", {"conversation_id": conversation.id})
+            result = Runner.run_streamed(
+                jarvis,
+                agent_input,
+                context=JarvisContext(user_id=owner_id),
+            )
+            async for event in result.stream_events():
+                if event.type != "raw_response_event":
+                    continue
+                data = event.data
+                if getattr(data, "type", None) == "response.output_text.delta":
+                    yield _sse("delta", {"text": data.delta})
+            if result.run_loop_exception:
+                raise result.run_loop_exception
+            reply = str(result.final_output)
+            add_message(conversation.id, "assistant", reply)
+            yield _sse(
+                "done", {"reply": reply, "conversation_id": conversation.id}
+            )
+        except Exception:
+            logger.exception(
+                "Streamed agent run failed",
+                extra={"conversation_id": conversation.id},
+            )
+            yield _sse("error", {"detail": "The assistant could not complete the request"})
+        finally:
+            if result is not None and not result.is_complete:
+                result.cancel()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/conversations", response_model=ConversationOut, status_code=201)

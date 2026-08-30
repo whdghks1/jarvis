@@ -14,6 +14,9 @@ FastAPI, OpenAI Agents SDK, PostgreSQL로 만드는 개인 AI 비서입니다.
 - 사용자 프로필 관리
 - 휴대폰 대응 웹 UI와 홈 화면 설치(PWA)
 - Kotlin/Jetpack Compose Android 앱
+- SSE 기반 실시간 답변 스트리밍
+- 앱 재실행 후 최근 대화 복원
+- Android TTS 한국어 음성 응답
 - 일회용 등록 코드를 이용한 기기 인증
 - Android Keystore 기반 인증 토큰 보관
 - 전화·지도·캘린더 작업 승인 및 감사 로그
@@ -121,6 +124,10 @@ DELETE /memories/{memory_id}
 
 `POST /chat`은 자연어 해석과 답변 생성을 위해 OpenAI 토큰을 사용합니다.
 최근 대화는 `CONVERSATION_HISTORY_LIMIT` 범위에서 다시 Agent에 전달됩니다.
+
+Android 앱은 `POST /chat/stream`을 사용합니다. SSE의 `conversation`, `delta`,
+`done`, `error` 이벤트를 순서대로 처리하며, DB에는 스트림이 정상 완료된 최종
+답변만 저장됩니다.
 
 대화 관리 API:
 
@@ -234,7 +241,10 @@ Android 앱의 현재 기능:
 - 서버와 기기 등록
 - Keystore에 암호화된 토큰 저장
 - 텍스트 채팅과 대화 이어가기
+- 답변이 생성되는 즉시 표시되는 스트리밍
+- 앱을 다시 열었을 때 마지막 대화와 메시지 복원
 - 버튼 기반 한국어 음성 입력
+- 한국어 TTS 응답과 음성 켜기·끄기 설정
 - 실행 대기 작업 승인·취소
 - 캘린더·지도·다이얼러 Intent 실행
 - 기기 연결 해제
@@ -255,9 +265,9 @@ OpenAI API 호출 없이 실행됩니다.
 - 대화가 길어질 때 자동 요약
 - PostgreSQL trigram/pgvector 의미 검색
 - 토큰 사용량과 호출 지연 관측
-- 채팅 응답 스트리밍
-- Android 대화 목록과 로컬 오프라인 캐시
-- TTS 음성 응답과 빠른 실행 위젯
+- Android 전체 대화 목록과 대화 선택
+- Room 기반 로컬 오프라인 캐시
+- 빠른 실행 위젯
 - WorkManager 기반 예약 알림
 - Google Calendar/Gmail 연동
 - 빅스비 Capsule 수준의 시스템 진입점과 Android App Actions 검토

@@ -6,6 +6,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class ChatReply(val text: String, val conversationId: Int)
+data class StoredMessage(val role: String, val content: String)
 data class DeviceAction(
     val id: Int,
     val type: String,
@@ -49,6 +50,63 @@ class JarvisApi(var baseUrl: String, private var token: String? = null) {
         conversationId?.let { body.put("conversation_id", it) }
         val result = JSONObject(request("/chat", "POST", body))
         return ChatReply(result.getString("reply"), result.getInt("conversation_id"))
+    }
+
+    fun chatStream(
+        message: String,
+        conversationId: Int?,
+        onConversation: (Int) -> Unit,
+        onDelta: (String) -> Unit,
+    ): ChatReply {
+        val body = JSONObject().put("message", message)
+        conversationId?.let { body.put("conversation_id", it) }
+        val connection = URL(baseUrl.trimEnd('/') + "/chat/stream").openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 120_000
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.setRequestProperty("Accept", "text/event-stream")
+        token?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
+        connection.outputStream.use { it.write(body.toString().toByteArray()) }
+        if (connection.responseCode !in 200..299) {
+            val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }
+            throw IllegalStateException(detail ?: "Stream failed (${connection.responseCode})")
+        }
+        var eventName = ""
+        var finalReply = ""
+        var finalConversationId = conversationId
+        connection.inputStream.bufferedReader().useLines { lines ->
+            lines.forEach { line ->
+                when {
+                    line.startsWith("event:") -> eventName = line.substringAfter(':').trim()
+                    line.startsWith("data:") -> {
+                        val data = JSONObject(line.substringAfter(':').trim())
+                        when (eventName) {
+                            "conversation" -> {
+                                finalConversationId = data.getInt("conversation_id")
+                                onConversation(finalConversationId!!)
+                            }
+                            "delta" -> onDelta(data.getString("text"))
+                            "done" -> {
+                                finalReply = data.getString("reply")
+                                finalConversationId = data.getInt("conversation_id")
+                            }
+                            "error" -> throw IllegalStateException(data.optString("detail", "Stream failed"))
+                        }
+                    }
+                }
+            }
+        }
+        return ChatReply(finalReply, requireNotNull(finalConversationId))
+    }
+
+    fun messages(conversationId: Int): List<StoredMessage> {
+        val array = JSONArray(request("/conversations/$conversationId/messages"))
+        return (0 until array.length()).map { index ->
+            val item = array.getJSONObject(index)
+            StoredMessage(item.getString("role"), item.getString("content"))
+        }
     }
 
     fun pendingActions(): List<DeviceAction> {

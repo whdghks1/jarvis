@@ -130,3 +130,41 @@ def test_device_pairing_and_safe_action_lifecycle():
         )
         assert completed.status_code == 200
         assert completed.json()["status"] == "completed"
+
+
+def test_streaming_chat_persists_final_reply(monkeypatch):
+    class FakeStreamingResult:
+        final_output = "Hello streamed world."
+        run_loop_exception = None
+        is_complete = True
+
+        async def stream_events(self):
+            for delta in ("Hello ", "streamed ", "world."):
+                yield SimpleNamespace(
+                    type="raw_response_event",
+                    data=SimpleNamespace(
+                        type="response.output_text.delta", delta=delta
+                    ),
+                )
+
+        def cancel(self):
+            raise AssertionError("Completed stream should not be cancelled")
+
+    monkeypatch.setattr(
+        "app.main.Runner.run_streamed", lambda *args, **kwargs: FakeStreamingResult()
+    )
+
+    with TestClient(app) as client:
+        with client.stream(
+            "POST", "/chat/stream", json={"message": "Stream this"}
+        ) as response:
+            body = "\n".join(response.iter_lines())
+        assert response.status_code == 200
+        assert "event: conversation" in body
+        assert body.count("event: delta") == 3
+        assert "event: done" in body
+        conversation_id = int(
+            body.split('"conversation_id": ')[1].split("}")[0]
+        )
+        messages = client.get(f"/conversations/{conversation_id}/messages").json()
+        assert messages[-1]["content"] == "Hello streamed world."

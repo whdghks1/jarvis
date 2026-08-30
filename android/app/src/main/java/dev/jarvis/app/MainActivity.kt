@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.CalendarContract
 import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -32,10 +33,19 @@ import java.util.Locale
 data class UiMessage(val role: String, val text: String)
 
 class MainActivity : ComponentActivity() {
+    private var textToSpeech: TextToSpeech? = null
+    private var ttsReady = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val tokenStore = SecureTokenStore(this)
         val prefs = getSharedPreferences("jarvis_settings", MODE_PRIVATE)
+        textToSpeech = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                textToSpeech?.language = Locale.KOREAN
+                ttsReady = true
+            }
+        }
         setContent {
             JarvisTheme {
                 JarvisApp(
@@ -43,10 +53,26 @@ class MainActivity : ComponentActivity() {
                     initialServerUrl = prefs.getString("server_url", BuildConfig.DEFAULT_SERVER_URL)
                         ?: BuildConfig.DEFAULT_SERVER_URL,
                     saveServerUrl = { prefs.edit().putString("server_url", it).apply() },
+                    initialConversationId = prefs.getInt("conversation_id", -1).takeIf { it > 0 },
+                    saveConversationId = { id ->
+                        if (id == null) prefs.edit().remove("conversation_id").apply()
+                        else prefs.edit().putInt("conversation_id", id).apply()
+                    },
+                    initialTtsEnabled = prefs.getBoolean("tts_enabled", true),
+                    saveTtsEnabled = { prefs.edit().putBoolean("tts_enabled", it).apply() },
+                    speak = { text ->
+                        if (ttsReady) textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis_reply")
+                    },
                     executeAction = ::executeAction,
                 )
             }
         }
+    }
+
+    override fun onDestroy() {
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        super.onDestroy()
     }
 
     private fun executeAction(action: DeviceAction) {
@@ -77,6 +103,11 @@ private fun JarvisApp(
     tokenStore: SecureTokenStore,
     initialServerUrl: String,
     saveServerUrl: (String) -> Unit,
+    initialConversationId: Int?,
+    saveConversationId: (Int?) -> Unit,
+    initialTtsEnabled: Boolean,
+    saveTtsEnabled: (Boolean) -> Unit,
+    speak: (String) -> Unit,
     executeAction: (DeviceAction) -> Unit,
 ) {
     var serverUrl by remember { mutableStateOf(initialServerUrl) }
@@ -92,6 +123,11 @@ private fun JarvisApp(
     } else {
         ChatScreen(
             api = remember(token, serverUrl) { JarvisApi(serverUrl, token) },
+            initialConversationId = initialConversationId,
+            saveConversationId = saveConversationId,
+            initialTtsEnabled = initialTtsEnabled,
+            saveTtsEnabled = saveTtsEnabled,
+            speak = speak,
             executeAction = executeAction,
             onUnpair = { tokenStore.clear(); token = null },
         )
@@ -138,16 +174,22 @@ private fun PairingScreen(
 @Composable
 private fun ChatScreen(
     api: JarvisApi,
+    initialConversationId: Int?,
+    saveConversationId: (Int?) -> Unit,
+    initialTtsEnabled: Boolean,
+    saveTtsEnabled: (Boolean) -> Unit,
+    speak: (String) -> Unit,
     executeAction: (DeviceAction) -> Unit,
     onUnpair: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var input by remember { mutableStateOf("") }
-    var conversationId by remember { mutableStateOf<Int?>(null) }
+    var conversationId by remember { mutableStateOf(initialConversationId) }
     var messages by remember { mutableStateOf(listOf<UiMessage>()) }
     var pending by remember { mutableStateOf(listOf<DeviceAction>()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var ttsEnabled by remember { mutableStateOf(initialTtsEnabled) }
 
     fun refreshActions() = scope.launch {
         runCatching { withContext(Dispatchers.IO) { api.pendingActions() } }
@@ -175,7 +217,15 @@ private fun ChatScreen(
                 Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("JARVIS", color = Color(0xFF5DD9FF), fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { conversationId = null; messages = emptyList() }) { Text("새 대화") }
+                    TextButton(onClick = {
+                        ttsEnabled = !ttsEnabled
+                        saveTtsEnabled(ttsEnabled)
+                    }) { Text(if (ttsEnabled) "음성 켜짐" else "음성 꺼짐") }
+                    TextButton(onClick = {
+                        conversationId = null
+                        saveConversationId(null)
+                        messages = emptyList()
+                    }) { Text("새 대화") }
                     TextButton(onClick = onUnpair) { Text("연결 해제") }
                 }
             }
@@ -221,10 +271,37 @@ private fun ChatScreen(
                     val text = input.trim(); input = ""; loading = true
                     messages = messages + UiMessage("user", text)
                     scope.launch {
-                        runCatching { withContext(Dispatchers.IO) { api.chat(text, conversationId) } }
+                        val assistantIndex = messages.size
+                        messages = messages + UiMessage("assistant", "")
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                api.chatStream(
+                                    text,
+                                    conversationId,
+                                    onConversation = { id ->
+                                        scope.launch {
+                                            conversationId = id
+                                            saveConversationId(id)
+                                        }
+                                    },
+                                    onDelta = { delta ->
+                                        scope.launch {
+                                            val current = messages.getOrNull(assistantIndex)?.text.orEmpty()
+                                            messages = messages.toMutableList().also {
+                                                if (assistantIndex < it.size) it[assistantIndex] = UiMessage("assistant", current + delta)
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                        }
                             .onSuccess { reply ->
                                 conversationId = reply.conversationId
-                                messages = messages + UiMessage("assistant", reply.text)
+                                saveConversationId(reply.conversationId)
+                                messages = messages.toMutableList().also {
+                                    if (assistantIndex < it.size) it[assistantIndex] = UiMessage("assistant", reply.text)
+                                }
+                                if (ttsEnabled) speak(reply.text)
                                 refreshActions()
                             }.onFailure { error = it.message }
                         loading = false
@@ -233,7 +310,17 @@ private fun ChatScreen(
             }
         }
     }
-    LaunchedEffect(Unit) { refreshActions() }
+    LaunchedEffect(Unit) {
+        initialConversationId?.let { id ->
+            runCatching { withContext(Dispatchers.IO) { api.messages(id) } }
+                .onSuccess { stored -> messages = stored.map { UiMessage(it.role, it.content) } }
+                .onFailure {
+                    conversationId = null
+                    saveConversationId(null)
+                }
+        }
+        refreshActions()
+    }
 }
 
 @Composable
