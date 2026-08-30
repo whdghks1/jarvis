@@ -58,6 +58,16 @@ from app.schemas import (
 settings = get_settings()
 owner_id = settings.owner_id
 static_dir = Path(__file__).parent / "static"
+android_apk = (
+    Path(__file__).parent.parent
+    / "android"
+    / "app"
+    / "build"
+    / "outputs"
+    / "apk"
+    / "debug"
+    / "app-debug.apk"
+)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("jarvis")
 
@@ -77,7 +87,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-public_paths = {"/", "/health", "/ready", "/device-registration", "/docs", "/openapi.json", "/redoc"}
+public_paths = {
+    "/",
+    "/health",
+    "/ready",
+    "/device-registration",
+    "/downloads/jarvis.apk",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+}
 
 
 @app.middleware("http")
@@ -380,6 +399,20 @@ def action_result(action_id: int, body: ActionResult, request: Request):
 @app.get("/", include_in_schema=False)
 def web_app():
     return FileResponse(static_dir / "index.html")
+
+
+@app.get("/downloads/jarvis.apk", include_in_schema=False)
+def download_android_app():
+    if not android_apk.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Android APK has not been built yet. Run ./gradlew assembleDebug.",
+        )
+    return FileResponse(
+        android_apk,
+        media_type="application/vnd.android.package-archive",
+        filename="JARVIS.apk",
+    )
 
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")

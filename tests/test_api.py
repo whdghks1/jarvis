@@ -6,10 +6,18 @@ from app.main import app, settings
 from app.security.service import authenticate_device
 
 
-def test_health_and_readiness():
+def test_health_and_readiness(tmp_path, monkeypatch):
+    fake_apk = tmp_path / "app-debug.apk"
+    fake_apk.write_bytes(b"fake apk")
+    monkeypatch.setattr("app.main.android_apk", fake_apk)
     with TestClient(app) as client:
         assert client.get("/").status_code == 200
         assert "JARVIS" in client.get("/").text
+        assert "Android 앱 설치" in client.get("/").text
+        apk = client.get("/downloads/jarvis.apk")
+        assert apk.status_code == 200
+        assert apk.headers["content-type"] == "application/vnd.android.package-archive"
+        assert "JARVIS.apk" in apk.headers["content-disposition"]
         assert client.get("/health").status_code == 200
         response = client.get("/ready")
         assert response.status_code == 200

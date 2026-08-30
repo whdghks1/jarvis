@@ -74,6 +74,7 @@ uvicorn app.main:app --reload
 
 - API 문서: http://127.0.0.1:8000/docs
 - JARVIS 화면: http://127.0.0.1:8000
+- Android APK 설치: http://127.0.0.1:8000/downloads/jarvis.apk
 - 프로세스 상태: http://127.0.0.1:8000/health
 - DB 준비 상태: http://127.0.0.1:8000/ready
 
@@ -171,6 +172,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 휴대폰 브라우저에서 `http://서버의-내부-IP:8000`으로 접속합니다. Safari나
 Chrome의 **홈 화면에 추가**를 선택하면 앱처럼 실행할 수 있습니다.
+웹 화면의 **Android 앱 설치** 버튼을 누르면 현재 빌드된 APK를
+바로 다운로드합니다. 첫 설치 시 Android에서 해당 브라우저의
+`알 수 없는 앱 설치`를 허용해야 할 수 있습니다.
 
 집 밖에서도 사용하려면 서버와 휴대폰에 Tailscale을 설치한 뒤 서버의
 Tailscale 주소로 접속하는 방식을 권장합니다. 공유기 포트포워딩으로 8000번
@@ -235,6 +239,9 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+빌드가 완료되면 FastAPI의 `/downloads/jarvis.apk`와 웹 화면의
+설치 버튼이 이 파일을 제공합니다.
 
 Android 앱의 현재 기능:
 
