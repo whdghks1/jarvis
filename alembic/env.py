@@ -6,8 +6,10 @@ from sqlalchemy import engine_from_config, pool
 from app.config import get_settings
 from app.database import Base
 from app.conversation import models as conversation_models  # noqa: F401
+from app.action import models as action_models  # noqa: F401
 from app.memory import models as memory_models  # noqa: F401
 from app.profile import models as profile_models  # noqa: F401
+from app.security import models as security_models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)

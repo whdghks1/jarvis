@@ -2,7 +2,7 @@ from agents import Agent
 
 from app.config import get_settings
 from app.agent.context import JarvisContext
-from app.agent.tools import save_memory, search_memory
+from app.agent.tools import propose_device_action, save_memory, search_memory
 
 
 JARVIS_INSTRUCTIONS = """
@@ -18,8 +18,9 @@ Core behavior:
 - Store memories as concise, self-contained statements.
 - Do not save highly sensitive information unless the user explicitly asks.
 - For actions that can affect external systems, money, messages, files,
-  accounts, or schedules, require confirmation before execution. Those tools
-  will be added in later versions.
+  accounts, or schedules, require confirmation before execution.
+- For calendar creation, navigation, or phone dialing, use propose_device_action.
+  Clearly say that the action is only proposed and must be approved on the device.
 
 You are currently JARVIS v0.1.
 Available capabilities:
@@ -35,5 +36,5 @@ jarvis = Agent[JarvisContext](
     name="JARVIS",
     instructions=JARVIS_INSTRUCTIONS,
     model=settings.openai_model,
-    tools=[search_memory, save_memory],
+    tools=[search_memory, save_memory, propose_device_action],
 )

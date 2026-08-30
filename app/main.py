@@ -1,4 +1,5 @@
 import logging
+import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -7,13 +8,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from agents import Runner
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.agent.context import JarvisContext
 from app.agent.jarvis import jarvis
+from app.action.service import create_action, list_actions, transition_action
 from app.config import get_settings
 from app.conversation.service import (
     add_message,
@@ -25,9 +28,18 @@ from app.conversation.service import (
 from app.database import SessionLocal, create_schema
 from app.memory.service import delete_memory, recent_memories, save_memory, update_memory
 from app.profile.service import get_profile, upsert_profile
+from app.security.service import (
+    authenticate_device,
+    list_devices,
+    register_device,
+    revoke_device,
+)
 from app.schemas import (
     ChatRequest,
     ChatResponse,
+    ActionCreate,
+    ActionOut,
+    ActionResult,
     ConversationCreate,
     ConversationOut,
     MemoryCreate,
@@ -36,6 +48,9 @@ from app.schemas import (
     MessageOut,
     ProfileOut,
     ProfileUpdate,
+    DeviceOut,
+    DeviceRegistration,
+    DeviceTokenOut,
 )
 
 settings = get_settings()
@@ -49,6 +64,8 @@ logger = logging.getLogger("jarvis")
 async def lifespan(_: FastAPI):
     if settings.auto_create_tables:
         create_schema()
+    if settings.auth_required:
+        logger.warning("JARVIS device pairing code: %s", settings.pairing_code)
     yield
 
 
@@ -57,6 +74,28 @@ app = FastAPI(
     version=settings.app_version,
     lifespan=lifespan,
 )
+
+public_paths = {"/", "/health", "/ready", "/device-registration", "/docs", "/openapi.json", "/redoc"}
+
+
+@app.middleware("http")
+async def device_authentication(request: Request, call_next):
+    request.state.device_id = None
+    if (
+        not settings.auth_required
+        or request.url.path in public_paths
+        or request.url.path.startswith("/static/")
+    ):
+        return await call_next(request)
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return JSONResponse(status_code=401, content={"detail": "Device authentication required"})
+    device = authenticate_device(token)
+    if device is None:
+        return JSONResponse(status_code=401, content={"detail": "Invalid or revoked device token"})
+    request.state.device_id = device.id
+    return await call_next(request)
 
 
 @app.get("/health")
@@ -73,6 +112,25 @@ def ready():
     except Exception as exc:
         logger.exception("Database readiness check failed")
         raise HTTPException(status_code=503, detail="Database is unavailable") from exc
+
+
+@app.post("/device-registration", response_model=DeviceTokenOut, status_code=201)
+def device_registration(body: DeviceRegistration):
+    if not hmac.compare_digest(body.pairing_code, settings.pairing_code):
+        raise HTTPException(status_code=403, detail="Invalid pairing code")
+    device, token = register_device(body.name)
+    return DeviceTokenOut(device_id=device.id, access_token=token)
+
+
+@app.get("/devices", response_model=list[DeviceOut])
+def devices_list():
+    return list_devices()
+
+
+@app.delete("/devices/{device_id}", status_code=204)
+def device_revoke(device_id: int):
+    if not revoke_device(device_id):
+        raise HTTPException(status_code=404, detail="Active device not found")
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -197,6 +255,72 @@ def profile_get():
 @app.put("/profile", response_model=ProfileOut)
 def profile_put(body: ProfileUpdate):
     return upsert_profile(owner_id, **body.model_dump())
+
+
+@app.post("/actions", response_model=ActionOut, status_code=201)
+def action_create(body: ActionCreate, request: Request):
+    try:
+        return create_action(
+            action_type=body.action_type,
+            title=body.title,
+            description=body.description,
+            payload=body.payload,
+            device_id=request.state.device_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/actions", response_model=list[ActionOut])
+def actions_list(
+    status: str | None = Query(default=None, max_length=30),
+    limit: int = Query(default=50, ge=1, le=100),
+):
+    return list_actions(status, limit)
+
+
+def _transition_or_error(
+    action_id: int,
+    event: str,
+    target_status: str,
+    device_id: int | None,
+    result: dict | None = None,
+):
+    try:
+        item = transition_action(
+            action_id, event, target_status, device_id, result=result
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Action not found")
+    return item
+
+
+@app.post("/actions/{action_id}/approve", response_model=ActionOut)
+def action_approve(action_id: int, request: Request):
+    return _transition_or_error(
+        action_id, "approved", "approved", request.state.device_id
+    )
+
+
+@app.post("/actions/{action_id}/cancel", response_model=ActionOut)
+def action_cancel(action_id: int, request: Request):
+    return _transition_or_error(
+        action_id, "cancelled", "cancelled", request.state.device_id
+    )
+
+
+@app.post("/actions/{action_id}/result", response_model=ActionOut)
+def action_result(action_id: int, body: ActionResult, request: Request):
+    status = "completed" if body.success else "failed"
+    return _transition_or_error(
+        action_id,
+        status,
+        status,
+        request.state.device_id,
+        result={"success": body.success, "detail": body.detail},
+    )
 
 
 @app.get("/", include_in_schema=False)

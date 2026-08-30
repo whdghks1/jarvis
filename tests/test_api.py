@@ -2,7 +2,8 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, settings
+from app.security.service import authenticate_device
 
 
 def test_health_and_readiness():
@@ -95,3 +96,37 @@ def test_conversation_history_and_user_ownership(monkeypatch):
             "user",
             "assistant",
         ]
+
+
+def test_device_pairing_and_safe_action_lifecycle():
+    with TestClient(app) as client:
+        paired = client.post(
+            "/device-registration",
+            json={"name": "Pixel", "pairing_code": settings.pairing_code},
+        )
+        assert paired.status_code == 201
+        token = paired.json()["access_token"]
+        assert authenticate_device(token) is not None
+
+        proposed = client.post(
+            "/actions",
+            json={
+                "action_type": "phone.dial",
+                "title": "Call home",
+                "payload": {"phone_number": "01000000000"},
+            },
+        )
+        assert proposed.status_code == 201
+        assert proposed.json()["status"] == "pending_confirmation"
+        action_id = proposed.json()["id"]
+
+        approved = client.post(f"/actions/{action_id}/approve")
+        assert approved.status_code == 200
+        assert approved.json()["status"] == "approved"
+
+        completed = client.post(
+            f"/actions/{action_id}/result",
+            json={"success": True, "detail": "Dialer opened"},
+        )
+        assert completed.status_code == 200
+        assert completed.json()["status"] == "completed"

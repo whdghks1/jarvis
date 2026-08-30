@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -70,3 +71,41 @@ class ProfileOut(ApiModel):
     timezone: str
     locale: str
     preferred_language: str
+
+
+class DeviceRegistration(ApiModel):
+    name: str = Field(min_length=1, max_length=100)
+    pairing_code: str = Field(min_length=6, max_length=200)
+
+
+class DeviceTokenOut(ApiModel):
+    device_id: int
+    access_token: str
+
+
+class DeviceOut(ApiModel):
+    id: int
+    name: str
+    revoked_at: datetime | None = None
+
+
+class ActionCreate(ApiModel):
+    action_type: Literal["calendar.create", "navigation.open", "phone.dial"]
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    payload: dict
+
+
+class ActionOut(ApiModel):
+    id: int
+    action_type: str
+    status: str
+    title: str
+    description: str | None
+    payload: dict
+    result: dict | None
+
+
+class ActionResult(ApiModel):
+    success: bool
+    detail: str | None = Field(default=None, max_length=500)

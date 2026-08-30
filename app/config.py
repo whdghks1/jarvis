@@ -1,4 +1,5 @@
 import os
+import secrets
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -19,6 +20,8 @@ class Settings:
     auto_create_tables: bool
     conversation_history_limit: int
     owner_id: str
+    auth_required: bool
+    pairing_code: str
 
 
 @lru_cache
@@ -37,4 +40,6 @@ def get_settings() -> Settings:
             2, int(os.getenv("CONVERSATION_HISTORY_LIMIT", "20"))
         ),
         owner_id=os.getenv("OWNER_ID", "owner"),
+        auth_required=_as_bool(os.getenv("AUTH_REQUIRED"), True),
+        pairing_code=os.getenv("PAIRING_CODE") or secrets.token_urlsafe(8),
     )

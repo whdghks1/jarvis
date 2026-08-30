@@ -18,10 +18,33 @@ const elements = {
 };
 
 async function request(url, options = {}) {
+  const token = localStorage.getItem("jarvisAccessToken");
   const response = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
     ...options,
   });
+  if (response.status === 401 && !options.pairingRetry) {
+    const pairingCode = window.prompt("서버 터미널에 표시된 JARVIS 기기 등록 코드를 입력하세요.");
+    if (pairingCode) {
+      const paired = await fetch("/device-registration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: navigator.userAgent.includes("Mobile") ? "Mobile Web" : "Web Browser",
+          pairing_code: pairingCode,
+        }),
+      });
+      if (paired.ok) {
+        const credentials = await paired.json();
+        localStorage.setItem("jarvisAccessToken", credentials.access_token);
+        return request(url, { ...options, pairingRetry: true });
+      }
+    }
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || `요청 실패 (${response.status})`);

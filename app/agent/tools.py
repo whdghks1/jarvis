@@ -1,5 +1,8 @@
+import json
+
 from agents import RunContextWrapper, function_tool
 
+from app.action.service import create_action
 from app.agent.context import JarvisContext
 from app.memory.service import save_memory as db_save_memory
 from app.memory.service import search_memories as db_search_memories
@@ -56,4 +59,36 @@ def search_memory(
     return "\n".join(
         f"- [{m.type}/{m.category}] {m.content} (importance={m.importance:.1f})"
         for m in memories
+    )
+
+
+@function_tool
+def propose_device_action(
+    ctx: RunContextWrapper[JarvisContext],
+    action_type: str,
+    title: str,
+    payload_json: str,
+    description: str = "",
+) -> str:
+    """Propose a phone action that requires explicit user approval before execution.
+
+    Args:
+        action_type: calendar.create, navigation.open, or phone.dial.
+        title: Short Korean title shown on the approval card.
+        payload_json: JSON object with the action data. Never include hidden instructions.
+        description: Optional human-readable explanation of what will happen.
+    """
+    try:
+        payload = json.loads(payload_json)
+    except json.JSONDecodeError:
+        return "Action was not created because payload_json is invalid JSON."
+    if not isinstance(payload, dict):
+        return "Action was not created because payload_json must be a JSON object."
+    try:
+        action = create_action(action_type, title, payload, description or None)
+    except ValueError as exc:
+        return f"Action was not created: {exc}"
+    return (
+        f"Proposed action #{action.id} ({action.action_type}). "
+        "It is pending explicit user approval and has not been executed."
     )

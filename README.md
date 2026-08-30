@@ -1,8 +1,9 @@
-# JARVIS v0.2
+# JARVIS v0.3
 
 FastAPI, OpenAI Agents SDK, PostgreSQL로 만드는 개인 AI 비서입니다.
 현재 범위는 단일 사용자 `owner`의 대화 세션, 프로필, 장기 기억과 모바일
-채팅 화면입니다. 공개 서비스나 다중 사용자 회원 시스템을 전제로 하지 않습니다.
+채팅 화면과 Android 앱입니다. 공개 서비스나 다중 사용자 회원 시스템을 전제로
+하지 않습니다.
 
 ## 주요 기능
 
@@ -12,6 +13,10 @@ FastAPI, OpenAI Agents SDK, PostgreSQL로 만드는 개인 AI 비서입니다.
 - 안정적인 key를 이용한 메모리 갱신 및 중복 방지
 - 사용자 프로필 관리
 - 휴대폰 대응 웹 UI와 홈 화면 설치(PWA)
+- Kotlin/Jetpack Compose Android 앱
+- 일회용 등록 코드를 이용한 기기 인증
+- Android Keystore 기반 인증 토큰 보관
+- 전화·지도·캘린더 작업 승인 및 감사 로그
 - Alembic DB migration
 - liveness/readiness 상태 확인
 
@@ -30,6 +35,8 @@ cp .env.example .env
 ```
 
 `.env`의 `OPENAI_API_KEY`를 실제 키로 변경합니다.
+`PAIRING_CODE`는 길고 예측하기 어려운 값으로 변경합니다. 값을 생략하면 서버가
+시작할 때 임시 등록 코드가 터미널에 표시됩니다.
 
 PostgreSQL을 실행합니다.
 
@@ -160,8 +167,79 @@ Chrome의 **홈 화면에 추가**를 선택하면 앱처럼 실행할 수 있�
 
 집 밖에서도 사용하려면 서버와 휴대폰에 Tailscale을 설치한 뒤 서버의
 Tailscale 주소로 접속하는 방식을 권장합니다. 공유기 포트포워딩으로 8000번
-포트를 인터넷에 직접 공개하지 마세요. 현재 앱은 개인 네트워크 사용을 전제로
-하며 별도의 로그인 화면은 없습니다.
+포트를 인터넷에 직접 공개하지 마세요. 브라우저나 Android 앱을 처음 연결할
+때 서버의 `PAIRING_CODE`를 한 번 입력해야 합니다.
+
+## 기기 인증
+
+`AUTH_REQUIRED=true`이면 `/health`, `/ready`, 정적 화면과 기기 등록을 제외한
+API에 Bearer 토큰이 필요합니다. 등록된 토큰은 서버에 SHA-256 해시로만
+저장됩니다.
+
+```text
+POST   /device-registration
+GET    /devices
+DELETE /devices/{device_id}
+```
+
+기기 연결을 해제하면 해당 토큰은 즉시 사용할 수 없습니다. OpenAI API key는
+Android 앱이나 웹 UI로 전달되지 않습니다.
+
+## 안전한 휴대폰 작업
+
+Agent가 아래 작업을 제안할 수 있지만 바로 실행하지는 않습니다.
+
+```text
+calendar.create  캘린더 작성 화면 열기
+navigation.open 지도 앱에서 목적지 열기
+phone.dial       전화번호가 입력된 다이얼러 열기
+```
+
+모든 작업은 `pending_confirmation` 상태로 생성되며 Android 앱에서 사용자가
+승인해야 실행됩니다.
+
+```text
+POST /actions
+GET  /actions?status=pending_confirmation
+POST /actions/{action_id}/approve
+POST /actions/{action_id}/cancel
+POST /actions/{action_id}/result
+```
+
+전화는 자동 발신하지 않고 `ACTION_DIAL`만 사용합니다. 캘린더도 직접 기록하지
+않고 Android 캘린더 작성 화면을 열어 사용자가 마지막으로 확인합니다.
+
+## Android 앱
+
+Android Studio에서 `android` 폴더를 프로젝트로 엽니다. 개발 서버 주소의
+기본값은 에뮬레이터용 `http://10.0.2.2:8000`입니다. 실제 휴대폰에서는 첫
+화면에서 Tailscale HTTPS 주소 또는 같은 Wi-Fi의 서버 주소를 입력합니다.
+
+터미널 빌드:
+
+```bash
+cd android
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+./gradlew assembleDebug
+```
+
+생성되는 APK:
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Android 앱의 현재 기능:
+
+- 서버와 기기 등록
+- Keystore에 암호화된 토큰 저장
+- 텍스트 채팅과 대화 이어가기
+- 버튼 기반 한국어 음성 입력
+- 실행 대기 작업 승인·취소
+- 캘린더·지도·다이얼러 Intent 실행
+- 기기 연결 해제
+
+개발 빌드만 HTTP 접속을 허용합니다. 배포용 빌드는 HTTPS만 허용합니다.
 
 ## 테스트
 
@@ -176,9 +254,10 @@ OpenAI API 호출 없이 실행됩니다.
 
 - 대화가 길어질 때 자동 요약
 - PostgreSQL trigram/pgvector 의미 검색
-- 개인 API key 또는 Tailscale 접근 정책 강화
 - 토큰 사용량과 호출 지연 관측
-- 외부 작업 승인(HITL) 및 감사 로그
+- 채팅 응답 스트리밍
+- Android 대화 목록과 로컬 오프라인 캐시
+- TTS 음성 응답과 빠른 실행 위젯
+- WorkManager 기반 예약 알림
 - Google Calendar/Gmail 연동
-- Next.js UI와 스트리밍
-- Voice와 능동 알림
+- 빅스비 Capsule 수준의 시스템 진입점과 Android App Actions 검토
