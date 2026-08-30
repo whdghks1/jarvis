@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -7,6 +8,8 @@ load_dotenv()
 
 from agents import Runner
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.agent.context import JarvisContext
@@ -36,6 +39,8 @@ from app.schemas import (
 )
 
 settings = get_settings()
+owner_id = settings.owner_id
+static_dir = Path(__file__).parent / "static"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("jarvis")
 
@@ -74,12 +79,12 @@ def ready():
 async def chat(body: ChatRequest):
     conversation = None
     if body.conversation_id is not None:
-        conversation = get_conversation(body.conversation_id, body.user_id)
+        conversation = get_conversation(body.conversation_id, owner_id)
         if conversation is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
     else:
         conversation = create_conversation(
-            body.user_id, title=body.message[:80]
+            owner_id, title=body.message[:80]
         )
 
     history = recent_messages(
@@ -90,7 +95,7 @@ async def chat(body: ChatRequest):
         for item in history
         if item.role in {"user", "assistant"}
     ]
-    profile = get_profile(body.user_id)
+    profile = get_profile(owner_id)
     if profile is not None:
         agent_input.insert(
             0,
@@ -111,7 +116,7 @@ async def chat(body: ChatRequest):
         result = await Runner.run(
             jarvis,
             agent_input,
-            context=JarvisContext(user_id=body.user_id),
+            context=JarvisContext(user_id=owner_id),
         )
         reply = str(result.final_output)
         add_message(conversation.id, "assistant", reply)
@@ -125,37 +130,35 @@ async def chat(body: ChatRequest):
 
 @app.post("/conversations", response_model=ConversationOut, status_code=201)
 def conversations_create(body: ConversationCreate):
-    return create_conversation(body.user_id, body.title)
+    return create_conversation(owner_id, body.title)
 
 
 @app.get("/conversations", response_model=list[ConversationOut])
 def conversations_list(
-    user_id: str = Query(default="owner", min_length=1, max_length=100),
     limit: int = Query(default=50, ge=1, le=100),
 ):
-    return list_conversations(user_id, limit)
+    return list_conversations(owner_id, limit)
 
 
 @app.get("/conversations/{conversation_id}/messages", response_model=list[MessageOut])
 def conversation_messages(
     conversation_id: int,
-    user_id: str = Query(default="owner", min_length=1, max_length=100),
     limit: int = Query(default=100, ge=1, le=200),
 ):
-    if get_conversation(conversation_id, user_id) is None:
+    if get_conversation(conversation_id, owner_id) is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return recent_messages(conversation_id, limit)
 
 
-@app.get("/memories/{user_id}", response_model=list[MemoryOut])
-def memories(user_id: str, limit: int = Query(default=10, ge=1, le=100)):
-    return recent_memories(user_id, limit)
+@app.get("/memories", response_model=list[MemoryOut])
+def memories(limit: int = Query(default=10, ge=1, le=100)):
+    return recent_memories(owner_id, limit)
 
 
 @app.post("/memories", response_model=MemoryOut, status_code=201)
 def create_memory(body: MemoryCreate):
     return save_memory(
-        user_id=body.user_id,
+        user_id=owner_id,
         content=body.content,
         memory_type=body.type,
         category=body.category,
@@ -168,9 +171,8 @@ def create_memory(body: MemoryCreate):
 def memory_update(
     memory_id: int,
     body: MemoryUpdate,
-    user_id: str = Query(default="owner", min_length=1, max_length=100),
 ):
-    item = update_memory(user_id, memory_id, **body.model_dump(exclude_unset=True))
+    item = update_memory(owner_id, memory_id, **body.model_dump(exclude_unset=True))
     if item is None:
         raise HTTPException(status_code=404, detail="Memory not found")
     return item
@@ -179,20 +181,27 @@ def memory_update(
 @app.delete("/memories/{memory_id}", status_code=204)
 def memory_delete(
     memory_id: int,
-    user_id: str = Query(default="owner", min_length=1, max_length=100),
 ):
-    if not delete_memory(user_id, memory_id):
+    if not delete_memory(owner_id, memory_id):
         raise HTTPException(status_code=404, detail="Memory not found")
 
 
-@app.get("/profiles/{user_id}", response_model=ProfileOut)
-def profile_get(user_id: str):
-    item = get_profile(user_id)
+@app.get("/profile", response_model=ProfileOut)
+def profile_get():
+    item = get_profile(owner_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Profile not found")
     return item
 
 
-@app.put("/profiles/{user_id}", response_model=ProfileOut)
-def profile_put(user_id: str, body: ProfileUpdate):
-    return upsert_profile(user_id, **body.model_dump())
+@app.put("/profile", response_model=ProfileOut)
+def profile_put(body: ProfileUpdate):
+    return upsert_profile(owner_id, **body.model_dump())
+
+
+@app.get("/", include_in_schema=False)
+def web_app():
+    return FileResponse(static_dir / "index.html")
+
+
+app.mount("/static", StaticFiles(directory=static_dir), name="static")

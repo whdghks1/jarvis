@@ -1,7 +1,8 @@
 # JARVIS v0.2
 
 FastAPI, OpenAI Agents SDK, PostgreSQL로 만드는 개인 AI 비서입니다.
-현재 범위는 대화 세션, 사용자 프로필, 장기 기억입니다.
+현재 범위는 단일 사용자 `owner`의 대화 세션, 프로필, 장기 기억과 모바일
+채팅 화면입니다. 공개 서비스나 다중 사용자 회원 시스템을 전제로 하지 않습니다.
 
 ## 주요 기능
 
@@ -10,6 +11,7 @@ FastAPI, OpenAI Agents SDK, PostgreSQL로 만드는 개인 AI 비서입니다.
 - OpenAI 토큰 없는 직접 메모리 저장
 - 안정적인 key를 이용한 메모리 갱신 및 중복 방지
 - 사용자 프로필 관리
+- 휴대폰 대응 웹 UI와 홈 화면 설치(PWA)
 - Alembic DB migration
 - liveness/readiness 상태 확인
 
@@ -61,6 +63,7 @@ uvicorn app.main:app --reload
 ```
 
 - API 문서: http://127.0.0.1:8000/docs
+- JARVIS 화면: http://127.0.0.1:8000
 - 프로세스 상태: http://127.0.0.1:8000/health
 - DB 준비 상태: http://127.0.0.1:8000/ready
 
@@ -70,7 +73,6 @@ uvicorn app.main:app --reload
 
 ```json
 {
-  "user_id": "owner",
   "content": "사용자의 이름은 종환이다.",
   "type": "fact",
   "category": "profile",
@@ -86,9 +88,9 @@ uvicorn app.main:app --reload
 기억 조회와 삭제:
 
 ```text
-GET    /memories/owner
-PATCH  /memories/{memory_id}?user_id=owner
-DELETE /memories/{memory_id}?user_id=owner
+GET    /memories
+PATCH  /memories/{memory_id}
+DELETE /memories/{memory_id}
 ```
 
 ## 연속 대화
@@ -97,7 +99,6 @@ DELETE /memories/{memory_id}?user_id=owner
 
 ```json
 {
-  "user_id": "owner",
   "message": "내일 회의 준비를 도와줘."
 }
 ```
@@ -106,7 +107,6 @@ DELETE /memories/{memory_id}?user_id=owner
 
 ```json
 {
-  "user_id": "owner",
   "conversation_id": 1,
   "message": "오후 3시 일정이야."
 }
@@ -119,8 +119,8 @@ DELETE /memories/{memory_id}?user_id=owner
 
 ```text
 POST /conversations
-GET  /conversations?user_id=owner
-GET  /conversations/{conversation_id}/messages?user_id=owner
+GET  /conversations
+GET  /conversations/{conversation_id}/messages
 ```
 
 ## 사용자 프로필
@@ -129,8 +129,8 @@ GET  /conversations/{conversation_id}/messages?user_id=owner
 사용하지 않습니다.
 
 ```text
-PUT /profiles/owner
-GET /profiles/owner
+PUT /profile
+GET /profile
 ```
 
 ```json
@@ -141,6 +141,27 @@ GET /profiles/owner
   "preferred_language": "Korean"
 }
 ```
+
+API 요청에는 `user_id`를 보내지 않습니다. 서버가 `.env`의 `OWNER_ID`를
+사용하며 기본값은 `owner`입니다. DB의 `user_id` 컬럼은 기존 데이터 호환과
+내부 소유권 표시를 위해 유지합니다.
+
+## 휴대폰에서 사용
+
+FastAPI가 모바일 채팅 화면도 함께 제공합니다. 같은 Wi-Fi 안에서만 쓸 때는
+서버를 다음처럼 실행합니다.
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+휴대폰 브라우저에서 `http://서버의-내부-IP:8000`으로 접속합니다. Safari나
+Chrome의 **홈 화면에 추가**를 선택하면 앱처럼 실행할 수 있습니다.
+
+집 밖에서도 사용하려면 서버와 휴대폰에 Tailscale을 설치한 뒤 서버의
+Tailscale 주소로 접속하는 방식을 권장합니다. 공유기 포트포워딩으로 8000번
+포트를 인터넷에 직접 공개하지 마세요. 현재 앱은 개인 네트워크 사용을 전제로
+하며 별도의 로그인 화면은 없습니다.
 
 ## 테스트
 
@@ -155,7 +176,7 @@ OpenAI API 호출 없이 실행됩니다.
 
 - 대화가 길어질 때 자동 요약
 - PostgreSQL trigram/pgvector 의미 검색
-- 실제 인증에서 `user_id` 주입
+- 개인 API key 또는 Tailscale 접근 정책 강화
 - 토큰 사용량과 호출 지연 관측
 - 외부 작업 승인(HITL) 및 감사 로그
 - Google Calendar/Gmail 연동

@@ -1,0 +1,101 @@
+:root {
+  color-scheme: dark;
+  --bg: #050b12;
+  --panel: rgba(11, 23, 36, 0.9);
+  --panel-strong: #0b1724;
+  --line: rgba(122, 202, 255, 0.14);
+  --text: #edf7ff;
+  --muted: #8ca2b5;
+  --accent: #5dd9ff;
+  --accent-strong: #9aeaff;
+  --user: #153d55;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 75% 12%, rgba(33, 157, 211, 0.16), transparent 28rem),
+    linear-gradient(145deg, #07111d, var(--bg) 60%);
+}
+button, textarea { font: inherit; }
+button { color: inherit; }
+
+.app-shell { display: grid; grid-template-columns: 280px 1fr; height: 100dvh; }
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: max(24px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+  background: rgba(5, 13, 22, 0.82);
+  border-right: 1px solid var(--line);
+  backdrop-filter: blur(20px);
+}
+.brand-block { display: flex; align-items: center; gap: 13px; padding: 0 8px 24px; }
+.brand-block h1, .topbar h2 { margin: 2px 0 0; letter-spacing: .08em; }
+.brand-block h1 { font-size: 21px; }
+.eyebrow { margin: 0; color: var(--accent); font-size: 9px; font-weight: 700; letter-spacing: .19em; }
+.orb {
+  width: 38px; height: 38px; border: 1px solid var(--accent); border-radius: 50%;
+  background: radial-gradient(circle, white 0 5%, var(--accent) 6% 16%, transparent 18% 42%, rgba(93,217,255,.3) 44% 55%, transparent 57%);
+  box-shadow: 0 0 24px rgba(93, 217, 255, .38), inset 0 0 13px rgba(93,217,255,.3);
+}
+.new-chat, .conversation-item, .suggestions button, .reset-button, .menu-button {
+  border: 1px solid var(--line); border-radius: 12px; background: rgba(18, 40, 57, .5); cursor: pointer;
+}
+.new-chat { width: 100%; padding: 12px; color: var(--accent-strong); font-weight: 650; }
+.new-chat:hover, .suggestions button:hover { border-color: rgba(93,217,255,.5); background: rgba(25,58,79,.65); }
+.conversation-list { display: flex; flex: 1; flex-direction: column; gap: 7px; overflow-y: auto; margin-top: 18px; }
+.conversation-item { padding: 11px 12px; color: var(--muted); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conversation-item.active { color: var(--text); border-color: rgba(93,217,255,.35); background: rgba(21,61,85,.7); }
+.system-state { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; padding: 12px 8px 0; border-top: 1px solid var(--line); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #65717b; }
+.status-dot.online { background: #5ef5a6; box-shadow: 0 0 10px #5ef5a6; }
+
+.chat-panel { min-width: 0; display: grid; grid-template-rows: auto 1fr auto auto; height: 100dvh; }
+.topbar { display: flex; align-items: center; gap: 14px; min-height: 78px; padding: max(14px, env(safe-area-inset-top)) 28px 14px; border-bottom: 1px solid var(--line); }
+.topbar h2 { max-width: min(60vw, 650px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+.menu-button { display: none; padding: 9px 11px; }
+.reset-button { margin-left: auto; padding: 9px 12px; color: var(--muted); }
+.messages { overflow-y: auto; padding: 34px max(24px, calc((100% - 820px) / 2)); scroll-behavior: smooth; }
+.welcome { max-width: 640px; margin: min(12vh, 100px) auto 0; text-align: center; }
+.welcome-mark { display: grid; place-items: center; width: 72px; height: 72px; margin: 0 auto 22px; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent-strong); font-size: 30px; box-shadow: 0 0 40px rgba(93,217,255,.18); }
+.welcome h2 { margin: 10px 0; font-size: clamp(25px, 4vw, 38px); font-weight: 500; }
+.welcome > p:not(.eyebrow) { color: var(--muted); line-height: 1.65; }
+.suggestions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-top: 30px; }
+.suggestions button { min-height: 54px; padding: 10px; color: #b8ccdb; }
+.message { display: flex; margin: 0 0 22px; animation: rise .22s ease-out; }
+.message.user { justify-content: flex-end; }
+.bubble { max-width: min(78%, 680px); padding: 13px 16px; border: 1px solid var(--line); border-radius: 16px 16px 16px 4px; background: var(--panel); line-height: 1.58; white-space: pre-wrap; overflow-wrap: anywhere; }
+.user .bubble { border-color: rgba(93,217,255,.22); border-radius: 16px 16px 4px 16px; background: var(--user); }
+.message.pending .bubble { color: var(--muted); }
+.composer { display: flex; align-items: flex-end; gap: 10px; width: min(calc(100% - 36px), 820px); margin: 0 auto; padding: 10px 12px; border: 1px solid rgba(93,217,255,.25); border-radius: 18px; background: var(--panel-strong); box-shadow: 0 18px 55px rgba(0,0,0,.3); }
+.composer:focus-within { border-color: rgba(93,217,255,.6); }
+textarea { flex: 1; max-height: 150px; resize: none; border: 0; outline: 0; padding: 9px 6px; color: var(--text); background: transparent; line-height: 1.45; }
+textarea::placeholder { color: #657b8c; }
+.send-button { width: 40px; height: 40px; flex: 0 0 auto; border: 0; border-radius: 12px; color: #041018; background: var(--accent); font-size: 22px; font-weight: 800; cursor: pointer; }
+.send-button:disabled { opacity: .35; cursor: wait; }
+.privacy-note { margin: 8px auto max(10px, env(safe-area-inset-bottom)); color: #607485; font-size: 10px; text-align: center; }
+.backdrop { display: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@keyframes rise { from { opacity: 0; transform: translateY(7px); } }
+
+@media (max-width: 760px) {
+  .app-shell { display: block; }
+  .sidebar { position: fixed; z-index: 20; inset: 0 auto 0 0; width: min(84vw, 310px); transform: translateX(-102%); transition: transform .22s ease; }
+  .sidebar.open { transform: translateX(0); }
+  .backdrop { position: fixed; z-index: 15; inset: 0; background: rgba(0,0,0,.55); }
+  .backdrop.open { display: block; }
+  .menu-button { display: block; }
+  .topbar { min-height: 68px; padding-left: 14px; padding-right: 14px; }
+  .reset-button { font-size: 12px; }
+  .messages { padding: 22px 14px; }
+  .welcome { margin-top: 7vh; }
+  .suggestions { grid-template-columns: 1fr; }
+  .bubble { max-width: 88%; }
+  .composer { width: calc(100% - 20px); }
+}

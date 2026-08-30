@@ -7,6 +7,8 @@ from app.main import app
 
 def test_health_and_readiness():
     with TestClient(app) as client:
+        assert client.get("/").status_code == 200
+        assert "JARVIS" in client.get("/").text
         assert client.get("/health").status_code == 200
         response = client.get("/ready")
         assert response.status_code == 200
@@ -16,20 +18,19 @@ def test_health_and_readiness():
 def test_profile_upsert_and_get():
     with TestClient(app) as client:
         response = client.put(
-            "/profiles/owner",
+            "/profile",
             json={"display_name": "Jonghwan", "timezone": "Asia/Seoul"},
         )
         assert response.status_code == 200
         assert response.json()["display_name"] == "Jonghwan"
-        assert client.get("/profiles/owner").json()["timezone"] == "Asia/Seoul"
+        assert client.get("/profile").json()["timezone"] == "Asia/Seoul"
 
 
-def test_direct_memory_upserts_by_normalized_key_and_isolates_users():
+def test_direct_memory_upserts_by_normalized_key():
     with TestClient(app) as client:
         first = client.post(
             "/memories",
             json={
-                "user_id": "owner",
                 "content": "My name is Jonghwan.",
                 "normalized_key": "profile.name",
                 "category": "profile",
@@ -38,7 +39,6 @@ def test_direct_memory_upserts_by_normalized_key_and_isolates_users():
         second = client.post(
             "/memories",
             json={
-                "user_id": "owner",
                 "content": "My preferred name is Tony.",
                 "normalized_key": "profile.name",
                 "category": "profile",
@@ -47,10 +47,9 @@ def test_direct_memory_upserts_by_normalized_key_and_isolates_users():
         assert first.status_code == 201
         assert second.status_code == 201
         assert second.json()["id"] == first.json()["id"]
-        assert len(client.get("/memories/owner").json()) == 1
-        assert client.get("/memories/someone-else").json() == []
+        assert len(client.get("/memories").json()) == 1
         updated = client.patch(
-            f"/memories/{first.json()['id']}?user_id=owner",
+            f"/memories/{first.json()['id']}",
             json={"importance": 0.8},
         )
         assert updated.status_code == 200
@@ -68,7 +67,7 @@ def test_conversation_history_and_user_ownership(monkeypatch):
 
     with TestClient(app) as client:
         first = client.post(
-            "/chat", json={"user_id": "chat-owner", "message": "Remember this context."}
+            "/chat", json={"message": "Remember this context."}
         )
         assert first.status_code == 200
         conversation_id = first.json()["conversation_id"]
@@ -76,19 +75,19 @@ def test_conversation_history_and_user_ownership(monkeypatch):
         second = client.post(
             "/chat",
             json={
-                "user_id": "chat-owner",
                 "conversation_id": conversation_id,
                 "message": "Continue.",
             },
         )
         assert second.status_code == 200
         assert [item["role"] for item in captured_inputs[1]] == [
+            "system",
             "user",
             "assistant",
             "user",
         ]
         messages = client.get(
-            f"/conversations/{conversation_id}/messages?user_id=chat-owner"
+            f"/conversations/{conversation_id}/messages"
         )
         assert [item["role"] for item in messages.json()] == [
             "user",
@@ -96,7 +95,3 @@ def test_conversation_history_and_user_ownership(monkeypatch):
             "user",
             "assistant",
         ]
-        forbidden = client.get(
-            f"/conversations/{conversation_id}/messages?user_id=other"
-        )
-        assert forbidden.status_code == 404

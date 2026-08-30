@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#07111d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>JARVIS</title>
+    <link rel="manifest" href="/static/manifest.webmanifest" />
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="대화 목록">
+        <div class="brand-block">
+          <div class="orb" aria-hidden="true"></div>
+          <div>
+            <p class="eyebrow">PERSONAL ASSISTANT</p>
+            <h1>JARVIS</h1>
+          </div>
+        </div>
+        <button class="new-chat" id="new-chat" type="button">새 대화</button>
+        <div class="conversation-list" id="conversation-list"></div>
+        <div class="system-state">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">서버 확인 중</span>
+        </div>
+      </aside>
+
+      <main class="chat-panel">
+        <header class="topbar">
+          <button class="menu-button" id="menu-button" type="button" aria-label="대화 목록 열기">☰</button>
+          <div>
+            <p class="eyebrow">SECURE PERSONAL CHANNEL</p>
+            <h2 id="conversation-title">새 대화</h2>
+          </div>
+          <button class="reset-button" id="reset-button" type="button">새로 시작</button>
+        </header>
+
+        <section class="messages" id="messages" aria-live="polite">
+          <div class="welcome" id="welcome">
+            <div class="welcome-mark">J</div>
+            <p class="eyebrow">SYSTEM ONLINE</p>
+            <h2>무엇을 도와드릴까요?</h2>
+            <p>대화는 이 기기에서 이어지고, 필요한 기억은 JARVIS가 PostgreSQL에 보관합니다.</p>
+            <div class="suggestions">
+              <button type="button" data-prompt="오늘 할 일을 정리해줘.">오늘 할 일 정리</button>
+              <button type="button" data-prompt="내가 기억해달라고 한 내용을 알려줘.">기억 확인</button>
+              <button type="button" data-prompt="이번 주 계획을 함께 세워보자.">주간 계획</button>
+            </div>
+          </div>
+        </section>
+
+        <form class="composer" id="chat-form">
+          <label class="sr-only" for="message-input">JARVIS에게 보낼 메시지</label>
+          <textarea id="message-input" rows="1" maxlength="20000" placeholder="JARVIS에게 메시지 보내기" required></textarea>
+          <button class="send-button" id="send-button" type="submit" aria-label="메시지 보내기">↑</button>
+        </form>
+        <p class="privacy-note">개인 네트워크에서만 접속하세요 · 답변은 틀릴 수 있습니다</p>
+      </main>
+    </div>
+    <div class="backdrop" id="backdrop"></div>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

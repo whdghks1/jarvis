@@ -9,7 +9,6 @@ class ApiModel(BaseModel):
 
 class ChatRequest(ApiModel):
     message: str = Field(min_length=1, max_length=20_000)
-    user_id: str = Field(default="owner", min_length=1, max_length=100)
     conversation_id: int | None = Field(default=None, gt=0)
 
 
@@ -19,7 +18,6 @@ class ChatResponse(ApiModel):
 
 
 class MemoryCreate(ApiModel):
-    user_id: str = Field(default="owner", min_length=1, max_length=100)
     content: str = Field(min_length=1, max_length=4000)
     type: Literal["fact", "preference", "goal", "project", "person", "decision"] = "fact"
     category: str = Field(default="general", min_length=1, max_length=100)
@@ -45,13 +43,11 @@ class MemoryUpdate(ApiModel):
 
 
 class ConversationCreate(ApiModel):
-    user_id: str = Field(default="owner", min_length=1, max_length=100)
     title: str | None = Field(default=None, max_length=200)
 
 
 class ConversationOut(ApiModel):
     id: int
-    user_id: str
     title: str | None
     summary: str | None
 
@@ -70,7 +66,6 @@ class ProfileUpdate(ApiModel):
 
 
 class ProfileOut(ApiModel):
-    user_id: str
     display_name: str | None
     timezone: str
     locale: str

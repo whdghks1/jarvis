@@ -18,6 +18,7 @@ class Settings:
     openai_model: str | None
     auto_create_tables: bool
     conversation_history_limit: int
+    owner_id: str
 
 
 @lru_cache
@@ -35,4 +36,5 @@ def get_settings() -> Settings:
         conversation_history_limit=max(
             2, int(os.getenv("CONVERSATION_HISTORY_LIMIT", "20"))
         ),
+        owner_id=os.getenv("OWNER_ID", "owner"),
     )
