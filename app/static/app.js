@@ -15,7 +15,21 @@ const elements = {
   backdrop: document.querySelector("#backdrop"),
   statusDot: document.querySelector("#status-dot"),
   statusText: document.querySelector("#status-text"),
+  clock: document.querySelector("#telemetry-clock"),
 };
+
+const welcomeMarkup = `
+  <div class="core-stage" aria-hidden="true">
+    <div class="core-ring ring-one"></div><div class="core-ring ring-two"></div>
+    <div class="core-ring ring-three"></div><div class="core-crosshair"></div>
+    <div class="welcome-mark">J</div>
+    <span class="core-particle particle-one"></span><span class="core-particle particle-two"></span>
+    <span class="core-particle particle-three"></span>
+  </div>
+  <div class="system-callout"><span></span>NEW SESSION READY</div>
+  <p class="eyebrow">JARVIS CORE // STANDBY</p>
+  <h2>새 대화를 시작합니다.</h2>
+  <p>아래 명령 입력 채널에 편하게 말씀해 주세요.</p>`;
 
 async function request(url, options = {}) {
   const token = localStorage.getItem("jarvisAccessToken");
@@ -97,7 +111,7 @@ function newConversation() {
   const intro = document.createElement("div");
   intro.className = "welcome";
   intro.id = "welcome";
-  intro.innerHTML = '<div class="welcome-mark">J</div><p class="eyebrow">READY</p><h2>새 대화를 시작합니다.</h2><p>아래 입력창에 편하게 말씀해 주세요.</p>';
+  intro.innerHTML = welcomeMarkup;
   elements.messages.appendChild(intro);
   closeSidebar();
   loadConversations().catch(() => {});
@@ -177,5 +191,16 @@ async function initialize() {
   }
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/static/sw.js");
 }
+
+function updateClock() {
+  if (elements.clock) {
+    elements.clock.textContent = new Intl.DateTimeFormat("ko-KR", {
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    }).format(new Date());
+  }
+}
+
+updateClock();
+setInterval(updateClock, 1000);
 
 initialize();
