@@ -58,15 +58,11 @@ from app.schemas import (
 settings = get_settings()
 owner_id = settings.owner_id
 static_dir = Path(__file__).parent / "static"
+configured_apk = Path(settings.android_apk_path)
 android_apk = (
-    Path(__file__).parent.parent
-    / "android"
-    / "app"
-    / "build"
-    / "outputs"
-    / "apk"
-    / "debug"
-    / "app-debug.apk"
+    configured_apk
+    if configured_apk.is_absolute()
+    else Path(__file__).parent.parent / configured_apk
 )
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("jarvis")

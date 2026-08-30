@@ -1,0 +1,69 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+    volumes:
+      - jarvis_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [jarvis_internal]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt: [no-new-privileges:true]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env.production}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      PAIRING_CODE: ${PAIRING_CODE:?Set PAIRING_CODE in .env.production}
+      OWNER_ID: ${OWNER_ID:-owner}
+      CONVERSATION_HISTORY_LIMIT: ${CONVERSATION_HISTORY_LIMIT:-20}
+      ENVIRONMENT: production
+      AUTH_REQUIRED: "true"
+      AUTO_CREATE_TABLES: "false"
+      ANDROID_APK_PATH: /app/releases/JARVIS.apk
+    command: >-
+      sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0
+      --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=*"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks: [jarvis_internal, jarvis_egress]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+networks:
+  jarvis_internal:
+    internal: true
+  jarvis_egress:
+
+volumes:
+  jarvis_pgdata:

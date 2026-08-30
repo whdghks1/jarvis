@@ -258,6 +258,88 @@ Android 앱의 현재 기능:
 
 개발 빌드만 HTTP 접속을 허용합니다. 배포용 빌드는 HTTPS만 허용합니다.
 
+## 외부 VPS 배포 (권장)
+
+도메인은 필수가 아닙니다. 개인용 JARVIS에는 Ubuntu VPS에서 Docker Compose로
+API와 PostgreSQL을 실행하고, Tailscale Serve의 `https://이름.tailnet.ts.net`
+주소로 휴대폰에서 접속하는 구성을 권장합니다. API의 8000번 포트는
+`127.0.0.1`에만 연결되므로 인터넷에 직접 노출되지 않습니다.
+
+### 1. 로컬에서 APK 준비
+
+Android SDK가 설치된 개발 컴퓨터에서 실행합니다.
+
+```bash
+./scripts/prepare-release.sh
+```
+
+생성된 `releases/JARVIS.apk`는 개인 서명 키를 만들기 전까지 디버그 서명된
+개인 설치용 APK입니다. Git에는 포함되지 않으므로 서버로 별도 전송해야 합니다.
+
+```bash
+scp releases/JARVIS.apk 서버사용자@서버주소:/opt/jarvis/releases/JARVIS.apk
+```
+
+### 2. VPS 환경 설정
+
+VPS에 Docker Engine, Docker Compose 플러그인, Git을 설치하고 프로젝트를
+`/opt/jarvis`에 준비합니다. 환경 파일은 저장소에 올리지 않습니다.
+
+```bash
+cd /opt/jarvis
+cp .env.production.example .env.production
+openssl rand -hex 32
+```
+
+생성한 서로 다른 난수로 `.env.production`의 `PAIRING_CODE`와
+`POSTGRES_PASSWORD`를 교체하고 `OPENAI_API_KEY`도 입력합니다. DB URL에 바로
+사용되므로 `POSTGRES_PASSWORD`는 `openssl rand -hex`처럼 영문과 숫자로만
+만드는 것이 안전합니다. 파일 권한도 제한합니다.
+
+```bash
+chmod 600 .env.production
+./scripts/deploy-production.sh
+curl http://127.0.0.1:8000/ready
+```
+
+### 3. Tailscale HTTPS 연결
+
+서버와 Android 휴대폰을 같은 Tailscale 계정에 연결합니다. 서버에서 HTTPS
+기능을 활성화한 뒤 다음 명령을 실행합니다.
+
+```bash
+./scripts/configure-tailscale.sh
+```
+
+출력된 `https://...ts.net` 주소를 Android 앱의 **개인 기기 연결** 화면에
+입력합니다. 이제 `10.0.2.2` 대신 이 주소가 저장됩니다. 휴대폰에서는 Tailscale
+VPN이 켜져 있어야 합니다. 공유기나 클라우드 방화벽에서 8000번 포트를 열지
+마세요. VPS의 SSH 포트는 가능하면 키 인증과 Tailscale SSH로 제한합니다.
+
+### 운영 명령
+
+```bash
+# 상태와 로그
+docker compose --env-file .env.production -f compose.production.yml ps
+docker compose --env-file .env.production -f compose.production.yml logs -f api
+
+# 새 버전 반영
+./scripts/deploy-production.sh
+
+# PostgreSQL 백업 (14일보다 오래된 로컬 백업 자동 정리)
+./scripts/backup-production.sh
+
+# 복원: 현재 DB를 변경하므로 백업 파일을 확인한 뒤 실행
+./scripts/restore-production.sh backups/jarvis-날짜.sql.gz --yes
+```
+
+`scripts/backup-production.sh`를 VPS의 cron 또는 systemd timer에서 매일 실행하고,
+백업 파일은 VPS 밖의 암호화된 저장소에도 복사하는 것이 좋습니다. OpenAI 키,
+등록 코드, DB 비밀번호는 APK나 Git 저장소에 넣지 않습니다.
+
+사용자 지정 도메인이 필요해지면 나중에 Caddy나 Cloudflare Tunnel을 추가할 수
+있지만, 단일 사용자·개인 기기 구성에서는 Tailscale 주소만으로 충분합니다.
+
 ## 테스트
 
 ```bash

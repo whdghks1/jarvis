@@ -22,14 +22,21 @@ class Settings:
     owner_id: str
     auth_required: bool
     pairing_code: str
+    android_apk_path: str
 
 
 @lru_cache
 def get_settings() -> Settings:
+    environment = os.getenv("ENVIRONMENT", "development")
+    pairing_code = os.getenv("PAIRING_CODE")
+    if environment == "production" and (
+        not pairing_code or pairing_code.startswith("replace-")
+    ):
+        raise ValueError("PAIRING_CODE must be explicitly set in production")
     return Settings(
         app_name=os.getenv("APP_NAME", "JARVIS API"),
-        app_version=os.getenv("APP_VERSION", "0.2.0"),
-        environment=os.getenv("ENVIRONMENT", "development"),
+        app_version=os.getenv("APP_VERSION", "0.3.0"),
+        environment=environment,
         database_url=os.getenv(
             "DATABASE_URL",
             "postgresql+psycopg://jarvis:jarvis@localhost:5432/jarvis",
@@ -41,5 +48,9 @@ def get_settings() -> Settings:
         ),
         owner_id=os.getenv("OWNER_ID", "owner"),
         auth_required=_as_bool(os.getenv("AUTH_REQUIRED"), True),
-        pairing_code=os.getenv("PAIRING_CODE") or secrets.token_urlsafe(8),
+        pairing_code=pairing_code or secrets.token_urlsafe(8),
+        android_apk_path=os.getenv(
+            "ANDROID_APK_PATH",
+            "android/app/build/outputs/apk/debug/app-debug.apk",
+        ),
     )

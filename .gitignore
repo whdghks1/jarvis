@@ -6,3 +6,6 @@ __pycache__/
 android/.gradle/
 android/local.properties
 android/app/build/
+releases/*.apk
+backups/
+.env.production
