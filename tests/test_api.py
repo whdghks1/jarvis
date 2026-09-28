@@ -211,6 +211,15 @@ def test_creative_chat_uses_local_model_and_persists_mode(monkeypatch):
     monkeypatch.setattr(creative_client, "chat", fake_chat)
 
     with TestClient(app) as client:
+        memory = client.post(
+            "/memories",
+            json={
+                "content": "The user likes long-form fiction.",
+                "category": "preference",
+            },
+        )
+        assert memory.status_code == 201
+
         first = client.post(
             "/chat",
             json={"message": "Write a short story.", "mode": "creative"},
