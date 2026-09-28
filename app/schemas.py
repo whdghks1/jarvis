@@ -4,6 +4,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+ChatMode = Literal["assistant", "creative"]
+
+
 class ApiModel(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, from_attributes=True)
 
@@ -11,11 +14,13 @@ class ApiModel(BaseModel):
 class ChatRequest(ApiModel):
     message: str = Field(min_length=1, max_length=20_000)
     conversation_id: int | None = Field(default=None, gt=0)
+    mode: ChatMode | None = None
 
 
 class ChatResponse(ApiModel):
     reply: str
     conversation_id: int
+    mode: ChatMode
 
 
 class MemoryCreate(ApiModel):
@@ -45,12 +50,14 @@ class MemoryUpdate(ApiModel):
 
 class ConversationCreate(ApiModel):
     title: str | None = Field(default=None, max_length=200)
+    mode: ChatMode = "assistant"
 
 
 class ConversationOut(ApiModel):
     id: int
     title: str | None
     summary: str | None
+    mode: ChatMode
 
 
 class MessageOut(ApiModel):
