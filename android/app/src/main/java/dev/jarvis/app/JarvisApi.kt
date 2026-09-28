@@ -45,8 +45,8 @@ class JarvisApi(var baseUrl: String, private var token: String? = null) {
         return result.getString("access_token").also { setToken(it) }
     }
 
-    fun chat(message: String, conversationId: Int?): ChatReply {
-        val body = JSONObject().put("message", message)
+    fun chat(message: String, conversationId: Int?, mode: String = "assistant"): ChatReply {
+        val body = JSONObject().put("message", message).put("mode", mode)
         conversationId?.let { body.put("conversation_id", it) }
         val result = JSONObject(request("/chat", "POST", body))
         return ChatReply(result.getString("reply"), result.getInt("conversation_id"))
@@ -55,10 +55,11 @@ class JarvisApi(var baseUrl: String, private var token: String? = null) {
     fun chatStream(
         message: String,
         conversationId: Int?,
+        mode: String = "assistant",
         onConversation: (Int) -> Unit,
         onDelta: (String) -> Unit,
     ): ChatReply {
-        val body = JSONObject().put("message", message)
+        val body = JSONObject().put("message", message).put("mode", mode)
         conversationId?.let { body.put("conversation_id", it) }
         val connection = URL(baseUrl.trimEnd('/') + "/chat/stream").openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
