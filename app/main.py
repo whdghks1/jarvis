@@ -20,6 +20,7 @@ from sqlalchemy import text
 
 from app.agent.context import JarvisContext
 from app.agent.jarvis import jarvis
+from app.llm.local_creative import LocalCreativeClient
 from app.action.service import create_action, list_actions, transition_action
 from app.config import get_settings
 from app.conversation.service import (
@@ -68,6 +69,7 @@ android_apk = (
 )
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("jarvis")
+creative_client = LocalCreativeClient()
 
 
 @asynccontextmanager
@@ -158,40 +160,54 @@ async def chat(body: ChatRequest):
     conversation, agent_input = _prepare_chat(body)
 
     try:
-        result = await Runner.run(
-            jarvis,
-            agent_input,
-            context=JarvisContext(user_id=owner_id),
-        )
-        reply = str(result.final_output)
+        if conversation.mode == "creative":
+            reply = await creative_client.chat(agent_input)
+        else:
+            result = await Runner.run(
+                jarvis,
+                agent_input,
+                context=JarvisContext(user_id=owner_id),
+            )
+            reply = str(result.final_output)
         add_message(conversation.id, "assistant", reply)
-        return ChatResponse(reply=reply, conversation_id=conversation.id)
+        return ChatResponse(
+            reply=reply,
+            conversation_id=conversation.id,
+            mode=conversation.mode,
+        )
     except Exception as exc:
-        logger.exception("Agent run failed", extra={"conversation_id": conversation.id})
+        logger.exception(
+            "Chat run failed",
+            extra={"conversation_id": conversation.id, "mode": conversation.mode},
+        )
         raise HTTPException(
             status_code=502, detail="The assistant could not complete the request"
         ) from exc
 
 
 def _prepare_chat(body: ChatRequest):
-    conversation = None
     if body.conversation_id is not None:
         conversation = get_conversation(body.conversation_id, owner_id)
         if conversation is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
+        if body.mode is not None and body.mode != conversation.mode:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Conversation mode is '{conversation.mode}'. "
+                    "Start a new conversation to switch modes."
+                ),
+            )
     else:
         conversation = create_conversation(
-            owner_id, title=body.message[:80]
+            owner_id,
+            title=body.message[:80],
+            mode=body.mode or "assistant",
         )
 
     history = recent_messages(
         conversation.id, limit=settings.conversation_history_limit
     )
-    agent_input = [
-        {"role": item.role, "content": item.content}
-        for item in history
-        if item.role in {"user", "assistant"}
-    ]
     profile = get_profile(owner_id)
     timezone_name = profile.timezone if profile is not None else "Asia/Seoul"
     try:
@@ -200,8 +216,8 @@ def _prepare_chat(body: ChatRequest):
         timezone_name = "UTC"
         local_timezone = ZoneInfo("UTC")
     local_now = datetime.now(local_timezone)
-    agent_input.insert(
-        0,
+
+    context_messages: list[dict[str, str]] = [
         {
             "role": "system",
             "content": (
@@ -210,11 +226,10 @@ def _prepare_chat(body: ChatRequest):
                 f"(timezone={timezone_name}). Resolve relative dates such as "
                 "today, tomorrow, and next week using this value."
             ),
-        },
-    )
+        }
+    ]
     if profile is not None:
-        agent_input.insert(
-            1,
+        context_messages.append(
             {
                 "role": "system",
                 "content": (
@@ -223,8 +238,28 @@ def _prepare_chat(body: ChatRequest):
                     f"timezone={profile.timezone}, locale={profile.locale}, "
                     f"preferred_language={profile.preferred_language}."
                 ),
-            },
+            }
         )
+    if conversation.mode == "creative":
+        memories = recent_memories(owner_id, limit=12)
+        if memories:
+            memory_text = "\n".join(f"- {item.content}" for item in memories)
+            context_messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Relevant long-term memory supplied by JARVIS. "
+                        "Use it only when it helps the current conversation:\n"
+                        f"{memory_text}"
+                    ),
+                }
+            )
+
+    agent_input = context_messages + [
+        {"role": item.role, "content": item.content}
+        for item in history
+        if item.role in {"user", "assistant"}
+    ]
     agent_input.append({"role": "user", "content": body.message})
     add_message(conversation.id, "user", body.message)
     return conversation, agent_input
@@ -241,29 +276,45 @@ async def chat_stream(body: ChatRequest):
     async def generate():
         result = None
         try:
-            yield _sse("conversation", {"conversation_id": conversation.id})
-            result = Runner.run_streamed(
-                jarvis,
-                agent_input,
-                context=JarvisContext(user_id=owner_id),
+            yield _sse(
+                "conversation",
+                {"conversation_id": conversation.id},
             )
-            async for event in result.stream_events():
-                if event.type != "raw_response_event":
-                    continue
-                data = event.data
-                if getattr(data, "type", None) == "response.output_text.delta":
-                    yield _sse("delta", {"text": data.delta})
-            if result.run_loop_exception:
-                raise result.run_loop_exception
-            reply = str(result.final_output)
+            if conversation.mode == "creative":
+                chunks: list[str] = []
+                async for delta in creative_client.stream(agent_input):
+                    chunks.append(delta)
+                    yield _sse("delta", {"text": delta})
+                reply = "".join(chunks)
+            else:
+                result = Runner.run_streamed(
+                    jarvis,
+                    agent_input,
+                    context=JarvisContext(user_id=owner_id),
+                )
+                async for event in result.stream_events():
+                    if event.type != "raw_response_event":
+                        continue
+                    data = event.data
+                    if getattr(data, "type", None) == "response.output_text.delta":
+                        yield _sse("delta", {"text": data.delta})
+                if result.run_loop_exception:
+                    raise result.run_loop_exception
+                reply = str(result.final_output)
+
             add_message(conversation.id, "assistant", reply)
             yield _sse(
-                "done", {"reply": reply, "conversation_id": conversation.id}
+                "done",
+                {
+                    "reply": reply,
+                    "conversation_id": conversation.id,
+                    "mode": conversation.mode,
+                },
             )
         except Exception:
             logger.exception(
-                "Streamed agent run failed",
-                extra={"conversation_id": conversation.id},
+                "Streamed chat run failed",
+                extra={"conversation_id": conversation.id, "mode": conversation.mode},
             )
             yield _sse("error", {"detail": "The assistant could not complete the request"})
         finally:
@@ -279,7 +330,7 @@ async def chat_stream(body: ChatRequest):
 
 @app.post("/conversations", response_model=ConversationOut, status_code=201)
 def conversations_create(body: ConversationCreate):
-    return create_conversation(owner_id, body.title)
+    return create_conversation(owner_id, body.title, mode=body.mode)
 
 
 @app.get("/conversations", response_model=list[ConversationOut])

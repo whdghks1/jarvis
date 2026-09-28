@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity() {
                         if (id == null) prefs.edit().remove("conversation_id").apply()
                         else prefs.edit().putInt("conversation_id", id).apply()
                     },
+                    initialChatMode = prefs.getString("chat_mode", "assistant") ?: "assistant",
+                    saveChatMode = { prefs.edit().putString("chat_mode", it).apply() },
                     initialTtsEnabled = prefs.getBoolean("tts_enabled", true),
                     saveTtsEnabled = { prefs.edit().putBoolean("tts_enabled", it).apply() },
                     speak = { text ->
@@ -132,6 +134,8 @@ private fun JarvisApp(
     saveServerUrl: (String) -> Unit,
     initialConversationId: Int?,
     saveConversationId: (Int?) -> Unit,
+    initialChatMode: String,
+    saveChatMode: (String) -> Unit,
     initialTtsEnabled: Boolean,
     saveTtsEnabled: (Boolean) -> Unit,
     speak: (String) -> Unit,
@@ -154,6 +158,8 @@ private fun JarvisApp(
             api = remember(token, serverUrl) { JarvisApi(serverUrl, token) },
             initialConversationId = initialConversationId,
             saveConversationId = saveConversationId,
+            initialChatMode = initialChatMode,
+            saveChatMode = saveChatMode,
             initialTtsEnabled = initialTtsEnabled,
             saveTtsEnabled = saveTtsEnabled,
             speak = speak,
@@ -351,6 +357,8 @@ private fun ChatScreen(
     api: JarvisApi,
     initialConversationId: Int?,
     saveConversationId: (Int?) -> Unit,
+    initialChatMode: String,
+    saveChatMode: (String) -> Unit,
     initialTtsEnabled: Boolean,
     saveTtsEnabled: (Boolean) -> Unit,
     speak: (String) -> Unit,
@@ -360,6 +368,7 @@ private fun ChatScreen(
     val scope = rememberCoroutineScope()
     var input by remember { mutableStateOf("") }
     var conversationId by remember { mutableStateOf(initialConversationId) }
+    var chatMode by remember { mutableStateOf(initialChatMode) }
     var messages by remember { mutableStateOf(listOf<UiMessage>()) }
     var pending by remember { mutableStateOf(listOf<DeviceAction>()) }
     var loading by remember { mutableStateOf(false) }
@@ -399,8 +408,16 @@ private fun ChatScreen(
                         MiniCore()
                         Spacer(Modifier.width(11.dp))
                         Column {
-                            Text("SECURE PERSONAL CHANNEL", color = HudCyan, style = MaterialTheme.typography.labelSmall)
-                            Text("JARVIS", color = HudText, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (chatMode == "creative") "LOCAL CREATIVE CHANNEL" else "SECURE PERSONAL CHANNEL",
+                                color = HudCyan,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Text(
+                                if (chatMode == "creative") "JARVIS CREATIVE" else "JARVIS",
+                                color = HudText,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                         }
                         Spacer(Modifier.weight(1f))
                         Text(
@@ -417,6 +434,22 @@ private fun ChatScreen(
                                 onDismissRequest = { menuExpanded = false },
                                 modifier = Modifier.background(Color(0xFF081B28)),
                             ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (chatMode == "creative") "비서 모드로 전환"
+                                            else "창작 · 자유 모드로 전환"
+                                        )
+                                    },
+                                    onClick = {
+                                        chatMode = if (chatMode == "creative") "assistant" else "creative"
+                                        saveChatMode(chatMode)
+                                        conversationId = null
+                                        saveConversationId(null)
+                                        messages = emptyList()
+                                        menuExpanded = false
+                                    },
+                                )
                                 DropdownMenuItem(
                                     text = { Text(if (ttsEnabled) "음성 응답 끄기" else "음성 응답 켜기") },
                                     onClick = {
@@ -517,6 +550,7 @@ private fun ChatScreen(
                                 api.chatStream(
                                     text,
                                     conversationId,
+                                    mode = chatMode,
                                     onConversation = { id ->
                                         scope.launch {
                                             conversationId = id
