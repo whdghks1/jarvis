@@ -4,9 +4,11 @@ from app.conversation.models import Conversation, Message, utcnow
 from app.database import SessionLocal
 
 
-def create_conversation(user_id: str, title: str | None = None) -> Conversation:
+def create_conversation(
+    user_id: str, title: str | None = None, mode: str = "assistant"
+) -> Conversation:
     with SessionLocal() as db:
-        item = Conversation(user_id=user_id, title=title)
+        item = Conversation(user_id=user_id, title=title, mode=mode)
         db.add(item)
         db.commit()
         db.refresh(item)
