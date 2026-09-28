@@ -1,5 +1,6 @@
 const state = {
   conversationId: Number(localStorage.getItem("jarvisConversationId")) || null,
+  mode: localStorage.getItem("jarvisChatMode") || "assistant",
   sending: false,
 };
 
@@ -16,6 +17,7 @@ const elements = {
   statusDot: document.querySelector("#status-dot"),
   statusText: document.querySelector("#status-text"),
   clock: document.querySelector("#telemetry-clock"),
+  modeButtons: [...document.querySelectorAll("[data-mode]")],
 };
 
 const welcomeMarkup = `
@@ -30,6 +32,24 @@ const welcomeMarkup = `
   <p class="eyebrow">JARVIS CORE // STANDBY</p>
   <h2>새 대화를 시작합니다.</h2>
   <p>아래 명령 입력 채널에 편하게 말씀해 주세요.</p>`;
+
+function updateModeUi() {
+  elements.modeButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.mode === state.mode);
+  });
+  elements.input.placeholder = state.mode === "creative"
+    ? "소설이나 자유대화를 시작해 보세요"
+    : "JARVIS에게 메시지 보내기";
+}
+
+function switchMode(mode) {
+  if (!["assistant", "creative"].includes(mode) || state.mode === mode) return;
+  state.mode = mode;
+  localStorage.setItem("jarvisChatMode", mode);
+  updateModeUi();
+  newConversation();
+}
+
 
 async function request(url, options = {}) {
   const token = localStorage.getItem("jarvisAccessToken");
@@ -86,7 +106,8 @@ async function loadConversations() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `conversation-item${item.id === state.conversationId ? " active" : ""}`;
-    button.textContent = item.title || `대화 ${item.id}`;
+    const prefix = item.mode === "creative" ? "✦ " : "";
+    button.textContent = prefix + (item.title || `대화 ${item.id}`);
     button.addEventListener("click", () => selectConversation(item));
     elements.list.appendChild(button);
   });
@@ -94,7 +115,10 @@ async function loadConversations() {
 
 async function selectConversation(item) {
   state.conversationId = item.id;
+  state.mode = item.mode || "assistant";
   localStorage.setItem("jarvisConversationId", String(item.id));
+  localStorage.setItem("jarvisChatMode", state.mode);
+  updateModeUi();
   elements.title.textContent = item.title || `대화 ${item.id}`;
   elements.messages.replaceChildren();
   const messages = await request(`/conversations/${item.id}/messages`);
@@ -106,7 +130,7 @@ async function selectConversation(item) {
 function newConversation() {
   state.conversationId = null;
   localStorage.removeItem("jarvisConversationId");
-  elements.title.textContent = "새 대화";
+  elements.title.textContent = state.mode === "creative" ? "새 창작 대화" : "새 대화";
   elements.messages.replaceChildren();
   const intro = document.createElement("div");
   intro.className = "welcome";
@@ -125,11 +149,14 @@ async function sendMessage(message) {
   addMessage("user", message);
   const pending = addMessage("assistant", "생각하고 있습니다…", true);
   try {
-    const payload = { message };
+    const payload = { message, mode: state.mode };
     if (state.conversationId) payload.conversation_id = state.conversationId;
     const result = await request("/chat", { method: "POST", body: JSON.stringify(payload) });
     state.conversationId = result.conversation_id;
+    state.mode = result.mode || state.mode;
     localStorage.setItem("jarvisConversationId", String(result.conversation_id));
+    localStorage.setItem("jarvisChatMode", state.mode);
+    updateModeUi();
     pending.querySelector(".bubble").textContent = result.reply;
     pending.classList.remove("pending");
     await loadConversations();
@@ -173,11 +200,15 @@ document.querySelector("#menu-button").addEventListener("click", () => {
   elements.backdrop.classList.add("open");
 });
 elements.backdrop.addEventListener("click", closeSidebar);
+elements.modeButtons.forEach((button) => {
+  button.addEventListener("click", () => switchMode(button.dataset.mode));
+});
 document.querySelectorAll("[data-prompt]").forEach((button) => {
   button.addEventListener("click", () => sendMessage(button.dataset.prompt));
 });
 
 async function initialize() {
+  updateModeUi();
   try {
     await request("/ready");
     elements.statusDot.classList.add("online");
