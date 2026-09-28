@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from app.main import app, settings
+from app.main import app, creative_client, settings
 from app.security.service import authenticate_device
 
 
@@ -199,3 +199,85 @@ def test_streaming_chat_persists_final_reply(monkeypatch):
         )
         messages = client.get(f"/conversations/{conversation_id}/messages").json()
         assert messages[-1]["content"] == "Hello streamed world."
+
+
+def test_creative_chat_uses_local_model_and_persists_mode(monkeypatch):
+    captured_inputs = []
+
+    async def fake_chat(messages):
+        captured_inputs.append(messages)
+        return "Local creative reply."
+
+    monkeypatch.setattr(creative_client, "chat", fake_chat)
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/chat",
+            json={"message": "Write a short story.", "mode": "creative"},
+        )
+        assert first.status_code == 200
+        assert first.json()["reply"] == "Local creative reply."
+        assert first.json()["mode"] == "creative"
+        conversation_id = first.json()["conversation_id"]
+
+        conversations = client.get("/conversations").json()
+        current = next(item for item in conversations if item["id"] == conversation_id)
+        assert current["mode"] == "creative"
+
+        second = client.post(
+            "/chat",
+            json={"conversation_id": conversation_id, "message": "Continue it."},
+        )
+        assert second.status_code == 200
+        assert second.json()["mode"] == "creative"
+        assert any(
+            "Relevant long-term memory" in item["content"]
+            for item in captured_inputs[-1]
+            if item["role"] == "system"
+        )
+
+
+def test_conversation_mode_cannot_change_mid_thread(monkeypatch):
+    async def fake_chat(messages):
+        return "Creative."
+
+    monkeypatch.setattr(creative_client, "chat", fake_chat)
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/chat", json={"message": "Start.", "mode": "creative"}
+        )
+        conversation_id = first.json()["conversation_id"]
+        changed = client.post(
+            "/chat",
+            json={
+                "conversation_id": conversation_id,
+                "message": "Switch.",
+                "mode": "assistant",
+            },
+        )
+        assert changed.status_code == 409
+
+
+def test_creative_stream_persists_final_reply(monkeypatch):
+    async def fake_stream(messages):
+        for delta in ("Local ", "creative ", "stream."):
+            yield delta
+
+    monkeypatch.setattr(creative_client, "stream", fake_stream)
+
+    with TestClient(app) as client:
+        with client.stream(
+            "POST",
+            "/chat/stream",
+            json={"message": "Stream locally.", "mode": "creative"},
+        ) as response:
+            body = "\n".join(response.iter_lines())
+        assert response.status_code == 200
+        assert body.count("event: delta") == 3
+        assert '"mode": "creative"' in body
+        conversation_id = int(
+            body.split('"conversation_id": ')[1].split(",")[0]
+        )
+        messages = client.get(f"/conversations/{conversation_id}/messages").json()
+        assert messages[-1]["content"] == "Local creative stream."
