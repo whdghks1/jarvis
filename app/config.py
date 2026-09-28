@@ -17,6 +17,10 @@ class Settings:
     environment: str
     database_url: str
     openai_model: str | None
+    ollama_base_url: str
+    ollama_model: str
+    ollama_timeout_seconds: float
+    ollama_temperature: float
     auto_create_tables: bool
     conversation_history_limit: int
     owner_id: str
@@ -35,13 +39,21 @@ def get_settings() -> Settings:
         raise ValueError("PAIRING_CODE must be explicitly set in production")
     return Settings(
         app_name=os.getenv("APP_NAME", "JARVIS API"),
-        app_version=os.getenv("APP_VERSION", "0.3.0"),
+        app_version=os.getenv("APP_VERSION", "0.4.0"),
         environment=environment,
         database_url=os.getenv(
             "DATABASE_URL",
             "postgresql+psycopg://jarvis:jarvis@localhost:5432/jarvis",
         ),
         openai_model=os.getenv("OPENAI_MODEL") or None,
+        ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/"),
+        ollama_model=os.getenv("OLLAMA_MODEL", "qwen3:8b"),
+        ollama_timeout_seconds=max(
+            10.0, float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180"))
+        ),
+        ollama_temperature=min(
+            2.0, max(0.0, float(os.getenv("OLLAMA_TEMPERATURE", "0.9")))
+        ),
         auto_create_tables=_as_bool(os.getenv("AUTO_CREATE_TABLES"), False),
         conversation_history_limit=max(
             2, int(os.getenv("CONVERSATION_HISTORY_LIMIT", "20"))
