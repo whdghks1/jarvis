@@ -286,7 +286,7 @@ def test_creative_stream_persists_final_reply(monkeypatch):
         assert body.count("event: delta") == 3
         assert '"mode": "creative"' in body
         conversation_id = int(
-            body.split('"conversation_id": ')[1].split(",")[0]
+            body.split('"conversation_id": ')[1].split("}")[0]
         )
         messages = client.get(f"/conversations/{conversation_id}/messages").json()
         assert messages[-1]["content"] == "Local creative stream."
