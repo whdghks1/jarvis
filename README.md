@@ -343,6 +343,61 @@ docker compose --env-file .env.production -f compose.production.yml logs -f api
 사용자 지정 도메인이 필요해지면 나중에 Caddy나 Cloudflare Tunnel을 추가할 수
 있지만, 단일 사용자·개인 기기 구성에서는 Tailscale 주소만으로 충분합니다.
 
+
+## 두 개의 대화 모드
+
+JARVIS는 대화방 단위로 두 개의 모델 경로를 분리해서 사용할 수 있습니다.
+
+- **비서 모드 (`assistant`)**: 기존 OpenAI Agents SDK를 사용합니다. 장기 기억 검색/저장과
+  캘린더·지도·전화 작업 제안 같은 JARVIS 도구를 사용할 수 있습니다.
+- **창작 · 자유 모드 (`creative`)**: Ollama의 로컬 LLM을 직접 호출합니다. 소설,
+  롤플레이, 브레인스토밍, 가벼운 자유대화처럼 도구가 필요 없는 대화에 사용합니다.
+  이 모드에서는 기기 작업 도구를 실행하지 않습니다.
+
+웹 화면 상단의 **비서 / 창작 · 자유** 스위치로 모드를 바꿀 수 있습니다. 모드를 바꾸면
+새 대화가 시작되며, 각 대화방의 모드는 DB에 저장되므로 과거 대화를 다시 열어도 올바른
+모델로 이어집니다.
+
+로컬 모델을 사용하려면 JARVIS 서버가 접근할 수 있는 컴퓨터에서 Ollama를 실행하고 모델을
+준비합니다.
+
+```bash
+ollama pull qwen3:8b
+ollama serve
+```
+
+JARVIS 환경 변수:
+
+```env
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen3:8b
+OLLAMA_TIMEOUT_SECONDS=180
+OLLAMA_TEMPERATURE=0.9
+```
+
+FastAPI가 VPS에서 실행되고 Ollama가 집 PC에서 실행되는 경우 `127.0.0.1`을 사용하면
+안 됩니다. 두 장비를 Tailscale에 연결한 뒤 `OLLAMA_BASE_URL`을 Ollama PC의
+Tailscale 주소로 지정하면 됩니다. Ollama 포트를 공용 인터넷에 직접 노출하지 마세요.
+
+기존 DB에서는 아래 migration을 한 번 적용합니다.
+
+```bash
+alembic upgrade head
+```
+
+API에서 새 대화를 직접 시작할 때는 `mode`를 지정할 수도 있습니다.
+
+```json
+{
+  "message": "단편 소설을 하나 써줘.",
+  "mode": "creative"
+}
+```
+
+기존 `conversation_id`를 이어갈 때는 저장된 모드가 사용되며, 다른 모드로 바꾸려면 새
+대화를 시작해야 합니다.
+
+
 ## 테스트
 
 ```bash
