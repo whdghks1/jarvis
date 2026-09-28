@@ -278,7 +278,7 @@ async def chat_stream(body: ChatRequest):
         try:
             yield _sse(
                 "conversation",
-                {"conversation_id": conversation.id, "mode": conversation.mode},
+                {"conversation_id": conversation.id},
             )
             if conversation.mode == "creative":
                 chunks: list[str] = []
